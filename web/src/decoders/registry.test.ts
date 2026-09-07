@@ -1,0 +1,27 @@
+import { canonicalDecoderId, getDecoder, listDecoders } from "./registry";
+
+describe("decoder catalogue", () => {
+  it("lists built-in profiles with NMRA last", () => {
+    const ids = listDecoders().map((d) => d.id);
+    expect(ids[ids.length - 1]).toBe("nmra");
+    expect(ids).toContain("zimo-ms450");
+    expect(ids).toContain("loksound-v5");
+    expect(ids).toContain("loksound-v4");
+    expect(ids).toContain("rb23xx");
+  });
+
+  it("resolves aliases and empty ids", () => {
+    expect(canonicalDecoderId("rb2300")).toBe("rb23xx");
+    expect(canonicalDecoderId("rb2302")).toBe("rb23xx");
+    expect(getDecoder("rb2300")?.id).toBe("rb23xx");
+    expect(getDecoder(null)).toBeUndefined();
+    expect(getDecoder("nope")).toBeUndefined();
+  });
+
+  it("advertises programming features used by the kiosk", () => {
+    expect(getDecoder("nmra")?.features).toEqual(["cv", "speed", "address"]);
+    expect(getDecoder("zimo-ms450")?.features).toContain("volume");
+    expect(getDecoder("loksound-v5")?.longAddressBit ?? 5).toBe(5);
+    expect(getDecoder("rb23xx")?.longAddressBit).toBe(3);
+  });
+});

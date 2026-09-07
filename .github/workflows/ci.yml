@@ -1,0 +1,126 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - "v*"
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: dcc-bigfred/bigfred
+          path: bigfred
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --locked
+
+      - name: Test (release-assertions)
+        run: cargo test --locked --profile release-assertions
+
+  build:
+    name: Build musl (${{ matrix.name }})
+    needs: test
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: arm64
+            runner: ubuntu-24.04-arm
+            rust_target: aarch64-unknown-linux-musl
+            arch_suffix: arm64
+            linker_env: CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER
+            cc_env: CC_aarch64_unknown_linux_musl
+          - name: amd64
+            runner: ubuntu-latest
+            rust_target: x86_64-unknown-linux-musl
+            arch_suffix: amd64
+            linker_env: CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER
+            cc_env: CC_x86_64_unknown_linux_musl
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: dcc-bigfred/bigfred
+          path: bigfred
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build embedded SPA
+        run: |
+          set -euo pipefail
+          cd web
+          npm ci
+          npm run build
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .
+          key: ${{ matrix.name }}-musl-spa
+
+      - name: Install musl toolchain
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y musl-tools musl-dev
+          musl-gcc --version
+
+      - name: Build static binary
+        env:
+          RUSTFLAGS: "-C target-feature=+crt-static"
+        run: |
+          set -euo pipefail
+          export ${{ matrix.linker_env }}=musl-gcc
+          export ${{ matrix.cc_env }}=musl-gcc
+          cargo build --release --target ${{ matrix.rust_target }}
+          mkdir -p dist
+          cp -f "target/${{ matrix.rust_target }}/release/programming-center" \
+            "dist/programming-center-linux-${{ matrix.arch_suffix }}"
+          chmod 755 "dist/programming-center-linux-${{ matrix.arch_suffix }}"
+          file "dist/programming-center-linux-${{ matrix.arch_suffix }}"
+          ls -lh dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.name }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 90

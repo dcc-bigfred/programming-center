@@ -1,0 +1,17 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    uses: dcc-bigfred/common/.github/workflows/rust-release.yml@v2
+    with:
+      elf_binaries: programming-center-linux-arm64
+      elf_section: .programming-center.version
+      ci_workflow: ci.yml
+    secrets: inherit

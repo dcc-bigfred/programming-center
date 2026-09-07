@@ -1,0 +1,43 @@
+[package]
+name = "programming-center"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "BigFred decoder programming kiosk"
+publish = false
+
+[[bin]]
+name = "programming-center"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+pc-core = { path = "../pc-core" }
+pc-proto = { path = "../pc-proto" }
+bigfred-shared-daemon = { git = "https://github.com/dcc-bigfred/rust-commons.git", branch = "main", default-features = false, features = ["config"] }
+bigfred-client = { path = "../../../bigfred/rust/crates/bigfred-client" }
+dcc-bigfred-proto-z21 = { git = "https://github.com/dcc-bigfred/proto.git", branch = "main" }
+axum = { version = "0.7", features = ["json", "query", "ws"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "time", "sync"] }
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "charset", "http2"] }
+futures = "0.3"
+rust-embed = { version = "8", features = ["mime-guess"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap = { version = "4", features = ["derive"] }
+thiserror = "1"
+async-trait = "0.1"
+diesel = { version = "2.2", features = ["sqlite", "returning_clauses_for_sqlite_3_35"] }
+diesel_migrations = { version = "2.2", features = ["sqlite"] }
+libsqlite3-sys = { version = "0.30", features = ["bundled"] }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }

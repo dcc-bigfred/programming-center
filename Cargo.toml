@@ -1,0 +1,37 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/pc-core",
+    "crates/pc-proto",
+    "crates/programming-center",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+authors = ["BigFred"]
+repository = "https://github.com/dcc-bigfred/programming-center"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
+overflow-checks = true
+
+[profile.release-assertions]
+inherits = "release"
+debug-assertions = true
+overflow-checks = true
+strip = false
