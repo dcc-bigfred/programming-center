@@ -175,6 +175,8 @@
     "create": "Anlegen",
     "cancel": "Abbrechen",
     "empty": "Keine gespeicherten Listen",
+    "filter": "Nach Name filtern",
+    "filterEmpty": "Keine passenden Listen",
     "emptyName": "Namen eingeben",
     "restoreAria": "In aktuelle Änderungen laden",
     "loadIntoCurrent": "In aktuelle Änderungen laden",

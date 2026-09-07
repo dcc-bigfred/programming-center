@@ -175,6 +175,8 @@
     "create": "Create",
     "cancel": "Cancel",
     "empty": "No saved lists",
+    "filter": "Filter by name",
+    "filterEmpty": "No matching lists",
     "emptyName": "Enter a name",
     "restoreAria": "Load into current changes",
     "loadIntoCurrent": "Load into current changes",

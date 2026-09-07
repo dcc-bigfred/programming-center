@@ -175,6 +175,8 @@
     "create": "Utwórz",
     "cancel": "Anuluj",
     "empty": "Brak zapisanych list",
+    "filter": "Filtruj po nazwie",
+    "filterEmpty": "Brak pasujących list",
     "emptyName": "Podaj nazwę",
     "restoreAria": "Wczytaj do obecnych zmian",
     "loadIntoCurrent": "Wczytaj do obecnych zmian",

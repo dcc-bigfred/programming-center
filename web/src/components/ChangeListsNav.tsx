@@ -12,10 +12,11 @@ import ListItemButton from "@mui/material/ListItemButton";
 import ListItemText from "@mui/material/ListItemText";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
+import TextField from "@mui/material/TextField";
 import ExpandLess from "@mui/icons-material/ExpandLess";
 import ExpandMore from "@mui/icons-material/ExpandMore";
 import SubdirectoryArrowLeft from "@mui/icons-material/SubdirectoryArrowLeft";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { ChangeList } from "../api/types";
@@ -39,6 +40,14 @@ const item = {
   },
 };
 
+const filterField = {
+  "& .MuiInputBase-root": { color: "#fff" },
+  "& .MuiInputLabel-root": { color: "rgba(255,255,255,0.7)" },
+  "& .MuiOutlinedInput-notchedOutline": {
+    borderColor: "rgba(255,255,255,0.23)",
+  },
+};
+
 export default function ChangeListsNav({ decoderId }: { decoderId: string | undefined }) {
   const { t } = useTranslation();
   const { diffs, setMany, formatDiffs } = useCvRegistry();
@@ -49,6 +58,11 @@ export default function ChangeListsNav({ decoderId }: { decoderId: string | unde
   const [active, setActive] = useState<ChangeList | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<unknown>(null);
+  const [filter, setFilter] = useState("");
+
+  useEffect(() => {
+    setFilter("");
+  }, [decoderId]);
 
   useEffect(() => {
     if (!decoderId) {
@@ -72,6 +86,12 @@ export default function ChangeListsNav({ decoderId }: { decoderId: string | unde
       cancelled = true;
     };
   }, [decoderId, epoch]);
+
+  const visibleItems = useMemo(() => {
+    const needle = filter.trim().toLowerCase();
+    if (!needle) return items;
+    return items.filter((list) => list.name.toLowerCase().includes(needle));
+  }, [filter, items]);
 
   const restore = (list: ChangeList) => {
     setMany(list.cvs);
@@ -122,6 +142,18 @@ export default function ChangeListsNav({ decoderId }: { decoderId: string | unde
         </ListItemButton>
       </ListItem>
       <Collapse in={open && enabled} timeout="auto" unmountOnExit>
+        {items.length > 0 ? (
+          <Box sx={{ px: 2, pb: 1, pt: 0.5 }}>
+            <TextField
+              size="small"
+              fullWidth
+              label={t("changeLists.filter")}
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              sx={filterField}
+            />
+          </Box>
+        ) : null}
         <List disablePadding>
           {loadError ? (
             <Box sx={{ px: 3, py: 1 }}>
@@ -132,8 +164,12 @@ export default function ChangeListsNav({ decoderId }: { decoderId: string | unde
             <Typography sx={{ px: 3, py: 1, color: "rgba(255,255,255,0.35)", fontSize: 12 }}>
               {t("changeLists.empty")}
             </Typography>
+          ) : visibleItems.length === 0 ? (
+            <Typography sx={{ px: 3, py: 1, color: "rgba(255,255,255,0.35)", fontSize: 12 }}>
+              {t("changeLists.filterEmpty")}
+            </Typography>
           ) : (
-            items.map((list) => (
+            visibleItems.map((list) => (
               <ListItem
                 key={list.id}
                 disablePadding
