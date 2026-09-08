@@ -1,13 +1,12 @@
 # Programming Center
 
-Decoder-programming kiosk for the BigFred hub tablet (`:8092`). One static
-musl binary serves an embedded React SPA, a programming WebSocket, and
-(when `mode` is `bigfred`) BigFred SSO plus an HTTP reverse proxy.
+Decoder programming made easy and for everyone.
 
-Polish, English and German. Back in the browser works: every screen is
-`path` + query (`station`, `decoder`, `address`, `track`).
+<img src="docs/pc-logo.png" alt="BigFred Programming Center" width="256">
 
 ## What you can do
+
+<img src="docs/screenshot.png" alt="BigFred Programming Center" width="256">
 
 - Pick a decoder in the left menu (ZIMO MS450, ESU LokSound v4 / v5, RailBOX RB23xx)
 - Read and write CVs one at a time (accordion list from the decoder catalog)
