@@ -17,6 +17,7 @@ import HomePage from "./pages/HomePage";
 import LoginPage from "./pages/LoginPage";
 import SpeedPage from "./pages/SpeedPage";
 import VolumePage from "./pages/VolumePage";
+import MappingPage from "./pages/MappingPage";
 
 function Protected({ children }: { children: ReactNode }) {
   const { ready, token, config } = useAuth();
@@ -89,6 +90,14 @@ function Router() {
         element={
           <Protected>
             <VolumePage />
+          </Protected>
+        }
+      />
+      <Route
+        path="/mapping"
+        element={
+          <Protected>
+            <MappingPage />
           </Protected>
         }
       />

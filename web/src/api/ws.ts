@@ -1,8 +1,18 @@
 import { ApiError, getToken } from "./client";
 import type { Ack, CvEntry, Track } from "./types";
+import { rememberRead } from "../cv/table";
+import {
+  applyProgressFrame,
+  createProgressState,
+  entryToApply,
+  expandCvList,
+  type ReadProgressState,
+} from "../features/cvReadProgress";
 
 const TYPE_ACK = "ack";
 const TYPE_CV_READ = "cv.read";
+const TYPE_CV_READ_CANCEL = "cv.read.cancel";
+const TYPE_CV_PROGRESS = "cv.progress";
 const TYPE_CV_WRITE = "cv.write";
 const TYPE_CV_BITOP = "cv.bitop";
 
@@ -55,6 +65,8 @@ export class ProgrammingClient {
   private readBusy = 0;
   private readListeners = new Set<() => void>();
   private readAborts = new Set<AbortController>();
+  private progress: ReadProgressState | null = null;
+  private ignoreProgress = new Set<string>();
 
   subscribeReadBusy(listener: () => void): () => void {
     this.readListeners.add(listener);
@@ -65,6 +77,10 @@ export class ProgrammingClient {
 
   isReadBusy(): boolean {
     return this.readBusy > 0;
+  }
+
+  getReadProgress(): ReadProgressState | null {
+    return this.progress;
   }
 
   cancelReads(): void {
@@ -113,7 +129,10 @@ export class ProgrammingClient {
     to?: number;
     skipAddress?: boolean;
     signal?: AbortSignal;
+    liveApply?: boolean;
   }): Promise<{ cvs: CvEntry[]; errors: number[] }> {
+    const liveApply = input.liveApply !== false;
+    const cvs = expandCvList(input.cvs, input.from, input.to, input.skipAddress);
     const ack = await this.runRead(input.signal, (signal) =>
       this.request(
         TYPE_CV_READ,
@@ -128,6 +147,7 @@ export class ProgrammingClient {
         },
         "read",
         signal,
+        { liveApply, cvs },
       ),
     );
     return { cvs: ack.cvs ?? [], errors: ack.errors ?? [] };
@@ -198,6 +218,9 @@ export class ProgrammingClient {
 
   private endRead(): void {
     this.readBusy = Math.max(0, this.readBusy - 1);
+    if (this.readBusy === 0) {
+      this.progress = null;
+    }
     this.emitRead();
   }
 
@@ -207,11 +230,23 @@ export class ProgrammingClient {
     }
   }
 
+  private sendCancel(id: string): void {
+    this.ignoreProgress.add(id);
+    if (this.progress?.requestId === id) {
+      this.progress = null;
+    }
+    if (this.socket?.readyState === WebSocket.OPEN) {
+      this.socket.send(JSON.stringify({ type: TYPE_CV_READ_CANCEL, id }));
+    }
+    this.emitRead();
+  }
+
   private async request(
     type: string,
     payload: unknown,
     kind: PendingKind,
     signal?: AbortSignal,
+    read?: { liveApply: boolean; cvs: number[] },
   ): Promise<Ack> {
     if (signal?.aborted) throw cancelled();
     const token = getToken();
@@ -219,12 +254,18 @@ export class ProgrammingClient {
     await this.waitOpen(signal);
     const id = requestId();
     const env: Envelope = { type, id, payload };
+    if (kind === "read" && read) {
+      this.progress = createProgressState(id, read.cvs, read.liveApply);
+      this.emitRead();
+    }
     const ack = await new Promise<Ack>((resolve, reject) => {
       const onAbort = () => {
         this.pending.delete(id);
+        if (kind === "read") this.sendCancel(id);
         reject(cancelled());
       };
       if (signal?.aborted) {
+        if (kind === "read") this.sendCancel(id);
         reject(cancelled());
         return;
       }
@@ -242,6 +283,10 @@ export class ProgrammingClient {
       });
       this.socket?.send(JSON.stringify(env));
     });
+    if (this.progress?.requestId === id) {
+      this.progress = null;
+      this.emitRead();
+    }
     if (!ack.ok) {
       throw new ApiError(0, ack.error ?? "generic", ack.detail);
     }
@@ -280,6 +325,10 @@ export class ProgrammingClient {
     } catch {
       return;
     }
+    if (env.type === TYPE_CV_PROGRESS && env.id) {
+      this.onProgress(env.id, env.payload);
+      return;
+    }
     if (env.type !== TYPE_ACK || !env.id) {
       return;
     }
@@ -289,6 +338,41 @@ export class ProgrammingClient {
     }
     this.pending.delete(env.id);
     waiter.resolve((env.payload as Ack) ?? { ok: false, error: "generic" });
+  }
+
+  private onProgress(id: string, payload: unknown): void {
+    if (this.ignoreProgress.has(id) || this.progress?.requestId !== id) {
+      return;
+    }
+    const frame = payload as {
+      total?: number;
+      done?: number;
+      current?: number;
+      cv?: number;
+      value?: number;
+      failed?: boolean;
+    };
+    if (typeof frame.total !== "number" || typeof frame.done !== "number") {
+      return;
+    }
+    this.progress = applyProgressFrame(this.progress, {
+      total: frame.total,
+      done: frame.done,
+      current: frame.current,
+      cv: frame.cv,
+      value: frame.value,
+      failed: frame.failed,
+    });
+    const entry = entryToApply(this.progress.liveApply, false, {
+      total: frame.total,
+      done: frame.done,
+      current: frame.current,
+      cv: frame.cv,
+      value: frame.value,
+      failed: frame.failed,
+    });
+    if (entry) rememberRead([entry]);
+    this.emitRead();
   }
 
   private failAll(err: Error): void {

@@ -30,6 +30,10 @@ impl ApiError {
         Self::new(StatusCode::BAD_REQUEST, code)
     }
 
+    pub fn cancelled() -> Self {
+        Self::new(StatusCode::BAD_REQUEST, "cancelled")
+    }
+
     pub fn unauthorized() -> Self {
         Self::new(StatusCode::UNAUTHORIZED, "unauthorized")
     }

@@ -1,5 +1,6 @@
 import type { SvgIconComponent } from "@mui/icons-material";
 import BackupIcon from "@mui/icons-material/Backup";
+import LightbulbOutlinedIcon from "@mui/icons-material/LightbulbOutlined";
 import MemoryIcon from "@mui/icons-material/Memory";
 import PinIcon from "@mui/icons-material/Pin";
 import SpeedIcon from "@mui/icons-material/Speed";
@@ -19,6 +20,7 @@ const FEATURES: FeatureModule[] = [
   { id: "speed", path: "/speed", Icon: SpeedIcon },
   { id: "address", path: "/address", Icon: PinIcon },
   { id: "volume", path: "/volume", Icon: VolumeUpIcon },
+  { id: "mapping", path: "/mapping", Icon: LightbulbOutlinedIcon },
   { id: "backup", path: "/backup", Icon: BackupIcon, requiresDecoder: false },
 ];
 

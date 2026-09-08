@@ -23,6 +23,7 @@ bigfred-client = { path = "../../../bigfred/rust/crates/bigfred-client" }
 dcc-bigfred-proto-z21 = { git = "https://github.com/dcc-bigfred/proto.git", branch = "main" }
 axum = { version = "0.7", features = ["json", "query", "ws"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "time", "sync"] }
+tokio-util = { version = "0.7", default-features = false, features = ["rt"] }
 tower-http = { version = "0.5", features = ["cors", "trace"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

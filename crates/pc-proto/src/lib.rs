@@ -113,7 +113,63 @@ pub struct CvBitopPayload {
     pub or_mask: u8,
 }
 
+/// One step of a standalone `cv.read` (same `id` as the request).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CvProgress {
+    pub total: u32,
+    pub done: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cv: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failed: Option<bool>,
+}
+
+impl CvProgress {
+    #[must_use]
+    pub fn reading(current: u16, done: u32, total: u32) -> Self {
+        Self {
+            total,
+            done,
+            current: Some(current),
+            cv: None,
+            value: None,
+            failed: None,
+        }
+    }
+
+    #[must_use]
+    pub fn got(cv: u16, value: u8, done: u32, total: u32) -> Self {
+        Self {
+            total,
+            done,
+            current: None,
+            cv: Some(cv),
+            value: Some(value),
+            failed: None,
+        }
+    }
+
+    #[must_use]
+    pub fn failed(cv: u16, done: u32, total: u32) -> Self {
+        Self {
+            total,
+            done,
+            current: None,
+            cv: Some(cv),
+            value: None,
+            failed: Some(true),
+        }
+    }
+}
+
 pub const TYPE_CV_READ: &str = "cv.read";
+pub const TYPE_CV_READ_CANCEL: &str = "cv.read.cancel";
+pub const TYPE_CV_PROGRESS: &str = "cv.progress";
 pub const TYPE_CV_WRITE: &str = "cv.write";
 pub const TYPE_CV_BITOP: &str = "cv.bitop";
 pub const TYPE_ACK: &str = "ack";
@@ -127,5 +183,30 @@ mod tests {
         let raw = r#"{"type":"cv.read","id":"1","payload":{"cvs":[1]}}"#;
         let env: Envelope = serde_json::from_str(raw).unwrap();
         assert_eq!(env.kind, TYPE_CV_READ);
+    }
+
+    #[test]
+    fn progress_reading_omits_value() {
+        let p = CvProgress::reading(33, 0, 14);
+        let raw = serde_json::to_value(&p).unwrap();
+        assert_eq!(raw["current"], 33);
+        assert_eq!(raw["done"], 0);
+        assert_eq!(raw["total"], 14);
+        assert!(raw.get("cv").is_none());
+        assert!(raw.get("value").is_none());
+        assert!(raw.get("failed").is_none());
+    }
+
+    #[test]
+    fn progress_got_and_failed_round_trip() {
+        let got = CvProgress::got(34, 2, 2, 14);
+        let failed = CvProgress::failed(35, 3, 14);
+        let got2: CvProgress = serde_json::from_value(serde_json::to_value(&got).unwrap()).unwrap();
+        let failed2: CvProgress =
+            serde_json::from_value(serde_json::to_value(&failed).unwrap()).unwrap();
+        assert_eq!(got, got2);
+        assert_eq!(failed, failed2);
+        assert_eq!(TYPE_CV_PROGRESS, "cv.progress");
+        assert_eq!(TYPE_CV_READ_CANCEL, "cv.read.cancel");
     }
 }

@@ -70,14 +70,17 @@ Review filter — not a restatement of CODING-GUIDELINES.
   array + `register` in `web/src/decoders/`. A new feature is a
   `FeatureModule` in `web/src/features/registry.ts` (left navigator).
   A new WS command is a new file + match arm. A new volume mapping is an
-  entry in `web/src/features/volumeMap.ts`.
+  entry in `web/src/features/volumeMap.ts`. Output mapping encode/decode
+  is a frontend module (`zimoMapping.ts`); other brands add their own
+  page behind `MappingPage`.
 - **Closed set, enum dispatch on the CV path.**
   `ProgrammingBus = DccBus | Z21`. `Hub::select(&live.mode)` — not
   `Box<dyn>` on the hot path (guidelines §8.2). The SPA feeds one
   `CvListPage` from `CvItem[]`.
 - **Direct CV ops.** Features compute on the frontend and call raw
   `cv.read` / `cv.write` / `cv.bitop`. Volume percent 0–100 lives in
-  `volumeMap.ts`; Apply writes the mapped master CV.
+  `volumeMap.ts`; Apply writes the mapped master CV. Mapping bits live in
+  `zimoMapping.ts`; Apply writes the staged CVs.
 - **Adapter.** dcc-bus frames and Z21 UDP hide behind `ProgrammingBus`.
 - **Errors.** Envelope `{error, detail}`. Forward BigFred / Z21 codes.
   The SPA i18n-looks-up the code; a missing translation shows the
@@ -134,6 +137,7 @@ programming-center/
 ├── Makefile
 ├── README.md
 ├── docs/speed/                # ZIMO / ESU speed-curve notes (English)
+├── docs/mapping/              # ZIMO output-mapping notes (English)
 ├── ARCHITECTURE.md            # this file
 ├── CODING-GUIDELINES.md
 ├── LICENSE                    # Apache-2.0
@@ -235,6 +239,7 @@ Unit tests: Vitest + Testing Library (`cd web && npm test`; `make test-web`).
 | `/speed` | same without `cv` | NMRA sliders, ZIMO drag charts, or LokSound v5 ESU charts; stages CVs. ZIMO and LokSound v5 `ensureRead` speed CVs on entry only when they are missing from the registry (prog/POM is transport, not a cache key). **Odczytaj** force-reads. |
 | `/address` | same without `cv` | DCC address (CV 1 / 17 / 18 / 29); stages, does not change query `address` until Apply |
 | `/volume` | same without `cv` | Volume 0–100 stages the mapped master CV (`volumeMap` + `cv.read`) |
+| `/mapping` | same without `cv` | Output mapping; ZIMO MS/MN only (`zimoMapping` + `cv.read`). `ensureRead` of missing CVs on entry; **Odczytaj** force-reads. |
 | `/backup` | `station`, `address`, `track` (no decoder required) | Dump / restore CVs; does not use CvRegistry |
 
 The shell is a Paperbase-style layout: dark left navigator, blue header,
@@ -249,7 +254,7 @@ CV table (`Record<cv, value>`) in `CvRegistry` (`sessionStorage` key
 Changing that scope loads a different table so two locomotives are not
 mixed. Programming-track vs POM (`track` in the query) does not change
 the table — it only goes on the next `cv.read` / `cv.write`. A field or
-wizard change (slider, chart drag, address, volume)
+wizard change (slider, chart drag, address, volume, mapping)
 writes into the table; a locomotive **read** fills both the table and the
 baseline, so it is not a pending change. The left-nav **Zmiany** list is
 `table` minus `baseline`. **Zaaplikuj** sends one `cv.write` of those diffs.
@@ -265,9 +270,15 @@ tiles, Detect, or the Navigator) reads those CVs on the programming track
 and fills `address` only when the session address is `0`.
 
 Any `cv.read` shows a full-viewport overlay
-(“Odczytuję CV… / Anuluj”). Cancel drops the SPA wait; a late ack is
-ignored. Writes are not covered, except backup restore which uses the
-same overlay. **Kopia zapasowa** (`/backup`) is always in the left nav
+(“Odczytuję CV… / Anuluj”). In **standalone**, the daemon streams
+`cv.progress` (current CV, `done`/`total`, value or `failed`); the overlay
+shows a determinate bar and a short CV list, and values are
+`rememberRead` as they arrive so the page behind the overlay updates.
+**Anuluj** sends `cv.read.cancel` (same `id`) and stops the Z21 loop
+between CVs. A late `ack` is ignored. BigFred still waits for one `ack`
+(spinner only). Writes are not covered, except backup restore which uses the
+same overlay. Backup dump sets `liveApply: false` so the loco table is
+untouched. **Kopia zapasowa** (`/backup`) is always in the left nav
 (no decoder required). Dump and restore call `cv.read` / `cv.write`
 directly and never touch CvRegistry. Dump default range is CV 1–1000
 (`from`/`to`/`skipAddress` on the payload). A failed CV 1 probe returns
@@ -299,13 +310,16 @@ Envelope `{ type, id, payload }`. Ack `{ ok, error, detail, cvs, errors }`.
 | type | Role |
 |---|---|
 | `cv.read` | Direct read. Payload may list `cvs` and/or inclusive `from`–`to`, plus `skipAddress`. |
+| `cv.progress` | Standalone only. Same `id` as the read. `{ total, done, current?, cv?, value?, failed? }` before and after each CV. |
+| `cv.read.cancel` | Standalone: stop the in-flight read (`id` of that `cv.read`). No ack. |
 | `cv.write` | Direct write |
 | `cv.bitop` | RMW: `new = (old & andMask) \| orMask` |
 
 Dump/restore of many CVs: the daemon probes CV 1 first, then chunks
 dcc-bus frames to stay under the 30 s ack timeout. Per-CV failures come
 back in `errors` (`ok` stays true). `loco.cvRead` / `loco.cvWrite` on
-dcc-bus do the same (partial `cvs` + `errors`).
+dcc-bus do the same (partial `cvs` + `errors`). Standalone reads stream
+progress instead of one long wait.
 
 New command = new file + match arm in `ws.rs`.
 
@@ -347,6 +361,10 @@ master CV via Direct `cv.write`:
 | `loksound-v5` | 63 | 192 |
 | `loksound-v4` | 63 | 64 |
 | `rb23xx` | 203 | 64 |
+
+Output mapping is ZIMO-only today (`/mapping` → `ZimoMappingPage`). Bits
+are encoded in `web/src/features/zimoMapping.ts`; notes in
+`docs/mapping/zimo.md`.
 
 ---
 

@@ -33,7 +33,7 @@ export function grouped(groupKey: string, items: CvItem[]): CvItem[] {
   return items.map((item) => ({ ...item, groupKey }));
 }
 
-export type FeatureId = "cv" | "speed" | "address" | "volume" | "backup";
+export type FeatureId = "cv" | "speed" | "address" | "volume" | "mapping" | "backup";
 
 export interface DecoderProfile {
   id: string;

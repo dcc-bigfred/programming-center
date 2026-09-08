@@ -4,9 +4,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio_util::sync::CancellationToken;
 
 use pc_core::{CvBatch, CvEntry, Track};
+use pc_proto::CvProgress;
 
 use crate::config::Config;
 use crate::error::ApiError;
@@ -15,6 +17,13 @@ use super::z21_udp::{CvError, Z21Client};
 use super::ProgrammingBus;
 
 const SETTLE: Duration = Duration::from_millis(300);
+
+struct InnerReport<'a> {
+    cancel: Option<&'a CancellationToken>,
+    progress: Option<&'a mpsc::Sender<CvProgress>>,
+    done_base: u32,
+    total: u32,
+}
 
 pub struct Z21Programmer {
     cfg: Arc<RwLock<Config>>,
@@ -63,6 +72,108 @@ impl Z21Programmer {
         }
         Ok(guard)
     }
+
+    /// Read CVs one-by-one, reporting before and after each slot. Stops between
+    /// CVs (and during settle) when `cancel` is cancelled.
+    pub async fn read_cvs_reporting(
+        &self,
+        address: u16,
+        cvs: &[u16],
+        track: Track,
+        cancel: &CancellationToken,
+        report: super::CvReadReport,
+    ) -> Result<CvBatch, ApiError> {
+        self.read_loop(
+            address,
+            cvs,
+            track,
+            InnerReport {
+                cancel: Some(cancel),
+                progress: Some(&report.progress),
+                done_base: report.done_base,
+                total: report.total,
+            },
+        )
+        .await
+    }
+
+    async fn read_loop(
+        &self,
+        address: u16,
+        cvs: &[u16],
+        track: Track,
+        report: InnerReport<'_>,
+    ) -> Result<CvBatch, ApiError> {
+        let mut guard = self.ensure_inner().await?;
+        let pom = track.is_pom();
+        let mut out = CvBatch::default();
+        let mut drop_session: Option<ApiError> = None;
+        {
+            let client = match guard.as_ref() {
+                Some((_, _, c)) => c,
+                None => return Err(ApiError::unavailable("z21_unreachable")),
+            };
+            for (i, cv) in cvs.iter().copied().enumerate() {
+                if report.cancel.is_some_and(CancellationToken::is_cancelled) {
+                    return Err(ApiError::cancelled());
+                }
+                if !pc_core::valid_cv(cv) {
+                    return Err(ApiError::bad_request("invalid_cv"));
+                }
+                if i > 0 {
+                    if let Some(token) = report.cancel {
+                        tokio::select! {
+                            () = token.cancelled() => return Err(ApiError::cancelled()),
+                            () = tokio::time::sleep(SETTLE) => {}
+                        }
+                    } else {
+                        tokio::time::sleep(SETTLE).await;
+                    }
+                }
+                if report.cancel.is_some_and(CancellationToken::is_cancelled) {
+                    return Err(ApiError::cancelled());
+                }
+                let done = report
+                    .done_base
+                    .saturating_add(u32::try_from(i).unwrap_or(u32::MAX));
+                if let Some(tx) = report.progress {
+                    let _ = tx.send(CvProgress::reading(cv, done, report.total)).await;
+                }
+                let result = if pom {
+                    client.read_cv_pom(address, cv).await
+                } else {
+                    client.read_cv(cv).await
+                };
+                let done = report
+                    .done_base
+                    .saturating_add(u32::try_from(i + 1).unwrap_or(u32::MAX));
+                match result {
+                    Ok(value) => {
+                        if let Some(tx) = report.progress {
+                            let _ = tx
+                                .send(CvProgress::got(cv, value, done, report.total))
+                                .await;
+                        }
+                        out.cvs.push(CvEntry { cv, value });
+                    }
+                    Err(err) => {
+                        if let Some(tx) = report.progress {
+                            let _ = tx.send(CvProgress::failed(cv, done, report.total)).await;
+                        }
+                        if let Err(api) = record_cv_err(&mut out, cv, err) {
+                            drop_session = Some(api);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(api) = drop_session {
+            *guard = None;
+            return Err(api);
+        }
+        Ok(out)
+    }
 }
 
 fn map_unreachable(err: CvError) -> ApiError {
@@ -94,43 +205,19 @@ impl ProgrammingBus for Z21Programmer {
         cvs: &[u16],
         track: Track,
     ) -> Result<CvBatch, ApiError> {
-        let mut guard = self.ensure_inner().await?;
-        let pom = track.is_pom();
-        let mut out = CvBatch::default();
-        let mut drop_session: Option<ApiError> = None;
-        {
-            let client = match guard.as_ref() {
-                Some((_, _, c)) => c,
-                None => return Err(ApiError::unavailable("z21_unreachable")),
-            };
-            for (i, cv) in cvs.iter().copied().enumerate() {
-                if !pc_core::valid_cv(cv) {
-                    return Err(ApiError::bad_request("invalid_cv"));
-                }
-                if i > 0 {
-                    tokio::time::sleep(SETTLE).await;
-                }
-                let result = if pom {
-                    client.read_cv_pom(address, cv).await
-                } else {
-                    client.read_cv(cv).await
-                };
-                match result {
-                    Ok(value) => out.cvs.push(CvEntry { cv, value }),
-                    Err(err) => {
-                        if let Err(api) = record_cv_err(&mut out, cv, err) {
-                            drop_session = Some(api);
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-        if let Some(api) = drop_session {
-            *guard = None;
-            return Err(api);
-        }
-        Ok(out)
+        let total = u32::try_from(cvs.len()).unwrap_or(u32::MAX);
+        self.read_loop(
+            address,
+            cvs,
+            track,
+            InnerReport {
+                cancel: None,
+                progress: None,
+                done_base: 0,
+                total,
+            },
+        )
+        .await
     }
 
     async fn write_cvs(

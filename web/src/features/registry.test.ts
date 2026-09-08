@@ -18,10 +18,15 @@ describe("feature modules", () => {
     expect(ids).toContain("address");
     expect(ids).toContain("backup");
     expect(ids).toContain("volume");
+    expect(ids).toContain("mapping");
     expect(isFeatureEnabled(listFeatures().find((f) => f.id === "volume")!, nmra)).toBe(false);
+    expect(isFeatureEnabled(listFeatures().find((f) => f.id === "mapping")!, nmra)).toBe(false);
     expect(isFeatureEnabled(listFeatures().find((f) => f.id === "speed")!, nmra)).toBe(true);
     expect(
       isFeatureEnabled(listFeatures().find((f) => f.id === "volume")!, getDecoder("zimo-ms450")),
+    ).toBe(true);
+    expect(
+      isFeatureEnabled(listFeatures().find((f) => f.id === "mapping")!, getDecoder("zimo-ms450")),
     ).toBe(true);
   });
 });

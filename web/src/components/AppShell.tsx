@@ -45,6 +45,8 @@ function titleFor(pathname: string, fallback: string | undefined, t: (key: strin
       return t("address.heading");
     case "/volume":
       return t("volume.heading");
+    case "/mapping":
+      return t("mapping.heading");
     case "/backup":
       return t("backup.heading");
     case "/login":

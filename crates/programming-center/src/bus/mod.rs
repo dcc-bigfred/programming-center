@@ -9,13 +9,24 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tokio::sync::RwLock;
 
+use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
+
 use pc_core::{CvBatch, CvEntry, Track};
+use pc_proto::CvProgress;
 
 use crate::config::{Config, IntegrationMode};
 use crate::error::ApiError;
 
 pub use dcc_bus::DccBusProgrammer;
 pub use z21::Z21Programmer;
+
+/// Standalone read: stream `CvProgress` and honour cancel between CVs.
+pub struct CvReadReport {
+    pub progress: mpsc::Sender<CvProgress>,
+    pub done_base: u32,
+    pub total: u32,
+}
 
 #[async_trait]
 pub trait ProgrammingBus: Send + Sync {
@@ -101,6 +112,20 @@ impl Hub {
 
     pub fn drop_z21(&self) {
         self.z21.invalidate();
+    }
+
+    /// Standalone only: per-CV progress on `progress`, stop on `cancel`.
+    pub async fn read_cvs_reporting(
+        &self,
+        address: u16,
+        cvs: &[u16],
+        track: Track,
+        cancel: &CancellationToken,
+        report: CvReadReport,
+    ) -> Result<CvBatch, ApiError> {
+        self.z21
+            .read_cvs_reporting(address, cvs, track, cancel, report)
+            .await
     }
 }
 

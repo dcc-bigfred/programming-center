@@ -83,6 +83,7 @@ export default function BackupPage() {
         from: fromN,
         to: toN,
         skipAddress,
+        liveApply: false,
       });
       setDumpText(formatCvBackup(cvs));
       setDumpSkipped(errors);

@@ -17,6 +17,7 @@ Decoder programming made easy and for everyone.
 - Set the NMRA 3-point speed curve (CV 2 / 6 / 5) plus accel / brake (CV 3 / 4)
 - Set the DCC address (short CV 1, or long CV 17/18 and CV 29 bit 5)
 - Set master volume 0–100 (mapped to CV 266 / 63 / 203 by decoder)
+- Map function keys to lamp outputs (ZIMO MS/MN)
 
 ## Run
 
@@ -65,6 +66,7 @@ and `ws://`.
 
 Speed control: [ZIMO MS/MN](docs/speed/zimo.md),
 [ESU LokSound 5](docs/speed/esu.md).
+Output mapping: [ZIMO MS/MN](docs/mapping/zimo.md).
 
 [ARCHITECTURE.md](ARCHITECTURE.md). Rust / TypeScript rules:
 [CODING-GUIDELINES.md](CODING-GUIDELINES.md). License: Apache-2.0.
