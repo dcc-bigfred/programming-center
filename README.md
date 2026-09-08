@@ -63,6 +63,9 @@ and `ws://`.
 
 ## Technical docs
 
+Speed control: [ZIMO MS/MN](docs/speed/zimo.md),
+[ESU LokSound 5](docs/speed/esu.md).
+
 [ARCHITECTURE.md](ARCHITECTURE.md). Rust / TypeScript rules:
 [CODING-GUIDELINES.md](CODING-GUIDELINES.md). License: Apache-2.0.
 

@@ -1,6 +1,4 @@
-//! Browser WebSocket: Direct CV ops and Managed volume.
-
-use std::sync::Arc;
+//! Browser WebSocket: Direct CV read / write / bitop.
 
 use axum::extract::ws::{Message, WebSocket};
 use axum::extract::{Query, State, WebSocketUpgrade};
@@ -9,13 +7,10 @@ use futures::{SinkExt, StreamExt};
 use serde::Deserialize;
 use tracing::warn;
 
-use pc_core::{
-    apply_bitop, expand_cv_list, valid_cv, valid_percent, CvBatch, CvEntry, ExpandError,
-    VolumeRegistry,
-};
+use pc_core::{apply_bitop, expand_cv_list, valid_cv, CvBatch, CvEntry, ExpandError};
 use pc_proto::{
-    Ack, CvBitopPayload, CvReadPayload, CvWritePayload, Envelope, VolumePayload, TYPE_ACK,
-    TYPE_CV_BITOP, TYPE_CV_READ, TYPE_CV_WRITE, TYPE_VOLUME_GET, TYPE_VOLUME_SET,
+    Ack, CvBitopPayload, CvReadPayload, CvWritePayload, Envelope, TYPE_ACK, TYPE_CV_BITOP,
+    TYPE_CV_READ, TYPE_CV_WRITE,
 };
 
 use crate::error::ApiError;
@@ -40,7 +35,6 @@ pub async fn ws_upgrade(
 
 async fn handle_socket(socket: WebSocket, state: AppState, token: Option<String>) {
     let (mut sink, mut stream) = socket.split();
-    let volumes = Arc::new(VolumeRegistry::with_builtins());
     while let Some(Ok(msg)) = stream.next().await {
         let text = match msg {
             Message::Text(t) => t,
@@ -62,7 +56,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, token: Option<String>
                 continue;
             }
         };
-        let ack = dispatch(&state, &volumes, token.as_deref(), &env).await;
+        let ack = dispatch(&state, token.as_deref(), &env).await;
         let reply = Envelope {
             kind: TYPE_ACK.to_string(),
             id: env.id,
@@ -77,12 +71,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, token: Option<String>
     }
 }
 
-async fn dispatch(
-    state: &AppState,
-    volumes: &VolumeRegistry,
-    token: Option<&str>,
-    env: &Envelope,
-) -> Ack {
+async fn dispatch(state: &AppState, token: Option<&str>, env: &Envelope) -> Ack {
     let payload = env.payload.clone().unwrap_or(serde_json::Value::Null);
     match env.kind.as_str() {
         TYPE_CV_READ => match serde_json::from_value::<CvReadPayload>(payload) {
@@ -95,14 +84,6 @@ async fn dispatch(
         },
         TYPE_CV_BITOP => match serde_json::from_value::<CvBitopPayload>(payload) {
             Ok(p) => cv_bitop(state, token, p).await,
-            Err(e) => Ack::fail("bad_payload", Some(e.to_string())),
-        },
-        TYPE_VOLUME_GET => match serde_json::from_value::<VolumePayload>(payload) {
-            Ok(p) => volume_get(state, volumes, token, p).await,
-            Err(e) => Ack::fail("bad_payload", Some(e.to_string())),
-        },
-        TYPE_VOLUME_SET => match serde_json::from_value::<VolumePayload>(payload) {
-            Ok(p) => volume_set(state, volumes, token, p).await,
             Err(e) => Ack::fail("bad_payload", Some(e.to_string())),
         },
         other => Ack::fail("unknown_command", Some(other.to_string())),
@@ -286,63 +267,6 @@ async fn cv_bitop(state: &AppState, token: Option<&str>, p: CvBitopPayload) -> A
         .await
     {
         Ok(cvs) => Ack::ok_cvs(cvs.cvs),
-        Err(e) => map_bus(e),
-    }
-}
-
-async fn volume_get(
-    state: &AppState,
-    volumes: &VolumeRegistry,
-    token: Option<&str>,
-    p: VolumePayload,
-) -> Ack {
-    let Some(strategy) = volumes.get(&p.decoder) else {
-        return Ack::fail("unknown_decoder", Some(p.decoder));
-    };
-    let cfg = state.config().await;
-    if !cfg.enabled {
-        return Ack::fail("pc_disabled", None);
-    }
-    let nums = strategy.read_cvs();
-    match state
-        .hub
-        .read_cvs(cfg.mode, token, p.station_id, p.address, nums, p.track)
-        .await
-    {
-        Ok(batch) => match strategy.decode(&batch.cvs) {
-            Some(percent) => Ack::ok_percent(percent, batch.cvs),
-            None => Ack::fail("volume_decode_failed", None),
-        },
-        Err(e) => map_bus(e),
-    }
-}
-
-async fn volume_set(
-    state: &AppState,
-    volumes: &VolumeRegistry,
-    token: Option<&str>,
-    p: VolumePayload,
-) -> Ack {
-    let Some(percent) = p.percent else {
-        return Ack::fail("percent_required", None);
-    };
-    if !valid_percent(percent) {
-        return Ack::fail("invalid_percent", None);
-    }
-    let Some(strategy) = volumes.get(&p.decoder) else {
-        return Ack::fail("unknown_decoder", Some(p.decoder));
-    };
-    let cfg = state.config().await;
-    if !cfg.enabled {
-        return Ack::fail("pc_disabled", None);
-    }
-    let cvs = strategy.encode(percent);
-    match state
-        .hub
-        .write_cvs(cfg.mode, token, p.station_id, p.address, &cvs, p.track)
-        .await
-    {
-        Ok(written) => Ack::ok_percent(percent, written.cvs),
         Err(e) => map_bus(e),
     }
 }

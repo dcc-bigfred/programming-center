@@ -33,8 +33,6 @@ pub struct Ack {
     pub cvs: Option<Vec<CvEntry>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub errors: Option<Vec<u16>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub percent: Option<u8>,
 }
 
 impl Ack {
@@ -55,19 +53,6 @@ impl Ack {
             } else {
                 Some(errors)
             },
-            percent: None,
-        }
-    }
-
-    #[must_use]
-    pub fn ok_percent(percent: u8, cvs: Vec<CvEntry>) -> Self {
-        Self {
-            ok: true,
-            error: None,
-            detail: None,
-            cvs: Some(cvs),
-            errors: None,
-            percent: Some(percent),
         }
     }
 
@@ -79,7 +64,6 @@ impl Ack {
             detail,
             cvs: None,
             errors: None,
-            percent: None,
         }
     }
 }
@@ -129,25 +113,9 @@ pub struct CvBitopPayload {
     pub or_mask: u8,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct VolumePayload {
-    #[serde(default)]
-    pub station_id: Option<u64>,
-    #[serde(default)]
-    pub address: u16,
-    #[serde(default)]
-    pub track: Track,
-    pub decoder: String,
-    #[serde(default)]
-    pub percent: Option<u8>,
-}
-
 pub const TYPE_CV_READ: &str = "cv.read";
 pub const TYPE_CV_WRITE: &str = "cv.write";
 pub const TYPE_CV_BITOP: &str = "cv.bitop";
-pub const TYPE_VOLUME_GET: &str = "feature.volume.get";
-pub const TYPE_VOLUME_SET: &str = "feature.volume.set";
 pub const TYPE_ACK: &str = "ack";
 
 #[cfg(test)]

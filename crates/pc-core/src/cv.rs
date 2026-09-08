@@ -118,12 +118,6 @@ pub fn valid_cv(cv: u16) -> bool {
     (CV_MIN..=CV_MAX).contains(&cv)
 }
 
-/// Volume slider percent 0–100.
-#[must_use]
-pub fn valid_percent(percent: u8) -> bool {
-    percent <= 100
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

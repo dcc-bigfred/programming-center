@@ -7,6 +7,7 @@ describe("volumeMap", () => {
     expect(volumeMapFor("loksound-v4")).toEqual({ cv: 63, max: 64 });
     expect(volumeMapFor("rb23xx")).toEqual({ cv: 203, max: 64 });
     expect(volumeMapFor("rb2300")).toEqual({ cv: 203, max: 64 });
+    expect(volumeMapFor("rb2302")).toEqual({ cv: 203, max: 64 });
     expect(volumeMapFor("nmra")).toBeUndefined();
   });
 

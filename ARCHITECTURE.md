@@ -56,7 +56,7 @@ org-wide Rust standard).
 10. **musl arm64 + amd64.** Allocation-conscious tokio/HTTP daemon
     (CODING-GUIDELINES §2), not firmware-heapless.
 11. **One programming session.** The browser holds one WebSocket to
-    programming-center. Direct (`cv.*`) and Managed (volume) share it.
+    programming-center (`cv.read` / `cv.write` / `cv.bitop`).
 
 ---
 
@@ -69,16 +69,15 @@ Review filter — not a restatement of CODING-GUIDELINES.
 - **Registry, not an `if` ladder.** A new decoder is a new TypeScript
   array + `register` in `web/src/decoders/`. A new feature is a
   `FeatureModule` in `web/src/features/registry.ts` (left navigator).
-  A new WS command is a new file + match arm. A new volume mapping is a
-  new `VolumeStrategy` + `VolumeRegistry::insert` in `pc-core`.
+  A new WS command is a new file + match arm. A new volume mapping is an
+  entry in `web/src/features/volumeMap.ts`.
 - **Closed set, enum dispatch on the CV path.**
   `ProgrammingBus = DccBus | Z21`. `Hub::select(&live.mode)` — not
   `Box<dyn>` on the hot path (guidelines §8.2). The SPA feeds one
   `CvListPage` from `CvItem[]`.
-- **Direct vs Managed.** Direct computes on the frontend and calls raw
-  `cv.read` / `cv.write` / `cv.bitop`. Managed sends a domain form
-  (`feature.volume.{get,set}` `{decoder, percent}`); both sides know the
-  mapping. Managed never names Z21 or dcc-bus.
+- **Direct CV ops.** Features compute on the frontend and call raw
+  `cv.read` / `cv.write` / `cv.bitop`. Volume percent 0–100 lives in
+  `volumeMap.ts`; Apply writes the mapped master CV.
 - **Adapter.** dcc-bus frames and Z21 UDP hide behind `ProgrammingBus`.
 - **Errors.** Envelope `{error, detail}`. Forward BigFred / Z21 codes.
   The SPA i18n-looks-up the code; a missing translation shows the
@@ -134,10 +133,11 @@ programming-center/
 ├── Cargo.toml                 # workspace: pc-core, pc-proto, programming-center
 ├── Makefile
 ├── README.md
+├── docs/speed/                # ZIMO / ESU speed-curve notes (English)
 ├── ARCHITECTURE.md            # this file
 ├── CODING-GUIDELINES.md
 ├── LICENSE                    # Apache-2.0
-├── crates/pc-core/            # bitop, volume, NMRA validation — no network I/O
+├── crates/pc-core/            # bitop, NMRA validation — no network I/O
 ├── crates/pc-proto/           # WS JSON envelope
 ├── crates/programming-center/ # Axum daemon, Diesel SQLite, both bus adapters, rust-embed
 └── web/                       # Vite + React 18 + MUI + i18next (pl/en/de, fallback pl)
@@ -234,7 +234,7 @@ Unit tests: Vitest + Testing Library (`cd web && npm test`; `make test-web`).
 | `/cv` | `station`, `decoder`, `address`, `track`, `cv` | Direct CV accordion (stages into CvRegistry) |
 | `/speed` | same without `cv` | NMRA sliders, ZIMO drag charts, or LokSound v5 ESU charts; stages CVs. ZIMO and LokSound v5 `ensureRead` speed CVs on entry only when they are missing from the registry (prog/POM is transport, not a cache key). **Odczytaj** force-reads. |
 | `/address` | same without `cv` | DCC address (CV 1 / 17 / 18 / 29); stages, does not change query `address` until Apply |
-| `/volume` | same without `cv` | Volume 0–100 stages the mapped master CV |
+| `/volume` | same without `cv` | Volume 0–100 stages the mapped master CV (`volumeMap` + `cv.read`) |
 | `/backup` | `station`, `address`, `track` (no decoder required) | Dump / restore CVs; does not use CvRegistry |
 
 The shell is a Paperbase-style layout: dark left navigator, blue header,
@@ -258,13 +258,13 @@ saves the current diffs as a named changelist (POST). Left-nav **Lista
 zmian** expands saved names; an arrow (or “Wczytaj do obecnych zmian”)
 merges those CVs into the session table (`setMany`). **Zastąp obecnymi
 zmianami** overwrites the saved snapshot (PATCH). Volume Apply writes the mapped
-master CV (same numbers as pc-core); it does not call `feature.volume.set`.
+master CV from `volumeMap.ts`.
 If Apply wrote CV 1 / 17 / 18, the programming-target `address` query is
 updated so POM follows the new DCC address. Selecting a decoder (home
 tiles, Detect, or the Navigator) reads those CVs on the programming track
 and fills `address` only when the session address is `0`.
 
-Any `cv.read` / `feature.volume.get` shows a full-viewport overlay
+Any `cv.read` shows a full-viewport overlay
 (“Odczytuję CV… / Anuluj”). Cancel drops the SPA wait; a late ack is
 ignored. Writes are not covered, except backup restore which uses the
 same overlay. **Kopia zapasowa** (`/backup`) is always in the left nav
@@ -294,15 +294,13 @@ Command stations: `GET /api/v1/layouts/{id}/command-stations`, filter
 
 `ws://…/api/v1/pc/ws?token=` — `token` required only in `bigfred`.
 
-Envelope `{ type, id, payload }`. Ack `{ ok, error, detail, cvs, errors, percent }`.
+Envelope `{ type, id, payload }`. Ack `{ ok, error, detail, cvs, errors }`.
 
 | type | Role |
 |---|---|
 | `cv.read` | Direct read. Payload may list `cvs` and/or inclusive `from`–`to`, plus `skipAddress`. |
 | `cv.write` | Direct write |
 | `cv.bitop` | RMW: `new = (old & andMask) \| orMask` |
-| `feature.volume.get` | Managed read `{ decoder }` |
-| `feature.volume.set` | Managed write `{ decoder, percent }` |
 
 Dump/restore of many CVs: the daemon probes CV 1 first, then chunks
 dcc-bus frames to stay under the 30 s ack timeout. Per-CV failures come
@@ -340,8 +338,8 @@ description under the CV number (never the raw i18n key). Known
 defaults prefills the editor before a read and are shown as
 “Wartość domyślna: n”. Out-of-range values are not staged.
 
-Backend `VolumeRegistry` (pc-core) is used for `feature.volume.get`.
-Apply writes the same mapped CV via Direct `cv.write`:
+Volume mapping lives in `web/src/features/volumeMap.ts`. Apply writes the
+master CV via Direct `cv.write`:
 
 | decoder id | CV | 100% |
 |---|---|---|

@@ -32,9 +32,8 @@ export default function VolumePage() {
       stationId: config?.stationPicker ? stationNumber(query.station) : undefined,
       address: addressNumber(query.address),
       track: query.track,
-      decoder: decoder?.id ?? query.decoder,
     }),
-    [config?.stationPicker, query.station, query.address, query.track, query.decoder, decoder?.id],
+    [config?.stationPicker, query.station, query.address, query.track],
   );
 
   if (!decoder || !decoder.features.includes("volume")) {
@@ -50,12 +49,9 @@ export default function VolumePage() {
     setBusy(true);
     setError(null);
     try {
-      const got = await programming.volumeGet(session);
-      if (got.cvs.length > 0) {
-        registry.rememberRead(got.cvs);
-      } else if (map) {
-        registry.rememberRead([{ cv: map.cv, value: encodeVolume(got.percent, map.max) }]);
-      }
+      if (!map) return;
+      const { cvs } = await programming.cvRead({ ...session, cvs: [map.cv] });
+      registry.rememberRead(cvs);
     } catch (err) {
       if (!isCancelled(err)) setError(err);
     } finally {

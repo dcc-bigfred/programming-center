@@ -1,4 +1,6 @@
-/** Frontend mirror of pc-core volume mapping (percent 0–100 → master CV). */
+/** Maps a 0–100 slider onto the decoder’s master-volume CV. */
+
+import { canonicalDecoderId } from "../decoders/registry";
 
 export interface VolumeMap {
   cv: number;
@@ -10,12 +12,10 @@ const MAPS: Record<string, VolumeMap> = {
   "loksound-v4": { cv: 63, max: 64 },
   "loksound-v5": { cv: 63, max: 192 },
   rb23xx: { cv: 203, max: 64 },
-  rb2300: { cv: 203, max: 64 },
-  rb2302: { cv: 203, max: 64 },
 };
 
 export function volumeMapFor(decoderId: string): VolumeMap | undefined {
-  return MAPS[decoderId];
+  return MAPS[canonicalDecoderId(decoderId)];
 }
 
 export function encodeVolume(percent: number, max: number): number {

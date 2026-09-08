@@ -5,8 +5,6 @@ const TYPE_ACK = "ack";
 const TYPE_CV_READ = "cv.read";
 const TYPE_CV_WRITE = "cv.write";
 const TYPE_CV_BITOP = "cv.bitop";
-const TYPE_VOLUME_GET = "feature.volume.get";
-const TYPE_VOLUME_SET = "feature.volume.set";
 
 interface Envelope {
   type: string;
@@ -164,40 +162,6 @@ export class ProgrammingClient {
   }): Promise<CvEntry[]> {
     const ack = await this.request(TYPE_CV_BITOP, input, "write");
     return ack.cvs ?? [];
-  }
-
-  async volumeGet(input: {
-    stationId?: number;
-    address: number;
-    track: Track;
-    decoder: string;
-    signal?: AbortSignal;
-  }): Promise<{ percent: number; cvs: CvEntry[] }> {
-    const ack = await this.runRead(input.signal, (signal) =>
-      this.request(
-        TYPE_VOLUME_GET,
-        {
-          stationId: input.stationId,
-          address: input.address,
-          track: input.track,
-          decoder: input.decoder,
-        },
-        "read",
-        signal,
-      ),
-    );
-    return { percent: ack.percent ?? 0, cvs: ack.cvs ?? [] };
-  }
-
-  async volumeSet(input: {
-    stationId?: number;
-    address: number;
-    track: Track;
-    decoder: string;
-    percent: number;
-  }): Promise<{ percent: number; cvs: CvEntry[] }> {
-    const ack = await this.request(TYPE_VOLUME_SET, input, "write");
-    return { percent: ack.percent ?? input.percent, cvs: ack.cvs ?? [] };
   }
 
   private async runRead(

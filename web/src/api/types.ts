@@ -77,5 +77,4 @@ export interface Ack {
   detail?: string;
   cvs?: CvEntry[];
   errors?: number[];
-  percent?: number;
 }
