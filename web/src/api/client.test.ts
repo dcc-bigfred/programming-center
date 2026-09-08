@@ -58,6 +58,16 @@ describe("api", () => {
     });
   });
 
+  it("maps fetch failures to network_error", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new TypeError("Failed to fetch")),
+    );
+    await expect(api.publicConfig()).rejects.toMatchObject({
+      code: "network_error",
+    });
+  });
+
   it("returns JSON on success and skips auth when asked", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

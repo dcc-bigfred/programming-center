@@ -4,7 +4,8 @@ import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
-const devHost = process.env.HOST || "localhost";
+const devHost = process.env.HOST || "0.0.0.0";
+const backend = process.env.PC_BACKEND || "http://127.0.0.1:8092";
 
 export default defineConfig({
   plugins: [react()],
@@ -16,11 +17,11 @@ export default defineConfig({
   },
   server: {
     host: devHost,
-    allowedHosts: ["programming-center.local", "bigfred.local"],
+    allowedHosts: true,
     port: 5176,
     proxy: {
-      "/api": { target: "http://localhost:8092", changeOrigin: true, ws: true },
-      "/healthz": { target: "http://localhost:8092", changeOrigin: true },
+      "/api": { target: backend, changeOrigin: true, ws: true },
+      "/healthz": { target: backend, changeOrigin: true },
     },
   },
   build: {

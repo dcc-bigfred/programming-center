@@ -60,6 +60,9 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
     method: opts.method ?? "GET",
     headers,
     body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+  }).catch((err: unknown) => {
+    const detail = err instanceof Error ? err.message : undefined;
+    throw new ApiError(0, "network_error", detail);
   });
 
   const text = await res.text();

@@ -29,4 +29,9 @@ describe("ErrorAlert", () => {
     rerender(<ErrorAlert error={new ApiError(0, "cancelled")} />);
     expect(screen.queryByRole("alert")).toBeNull();
   });
+
+  it("surfaces the underlying message for unknown Errors", () => {
+    render(<ErrorAlert error={new TypeError("crypto.randomUUID is not a function")} />);
+    expect(screen.getByRole("alert")).toHaveTextContent("Błąd (crypto.randomUUID is not a function)");
+  });
 });

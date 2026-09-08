@@ -35,6 +35,20 @@ function cancelled(): ApiError {
   return new ApiError(0, "cancelled");
 }
 
+/** `crypto.randomUUID` is secure-context only (HTTPS / localhost), not LAN IPs. */
+export function requestId(): string {
+  const c = globalThis.crypto;
+  if (typeof c?.randomUUID === "function") {
+    return c.randomUUID();
+  }
+  const bytes = new Uint8Array(16);
+  c.getRandomValues(bytes);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 export class ProgrammingClient {
   private socket: WebSocket | null = null;
   private pending = new Map<string, Pending>();
@@ -66,7 +80,7 @@ export class ProgrammingClient {
       return;
     }
     this.wantedToken = token;
-    this.teardown(new Error("reconnect"));
+    this.teardown(new ApiError(0, "ws_closed"));
     const socket = new WebSocket(wsUrl(token));
     this.socket = socket;
     socket.addEventListener("open", () => {
@@ -239,7 +253,7 @@ export class ProgrammingClient {
     const token = getToken();
     this.connect(token);
     await this.waitOpen(signal);
-    const id = crypto.randomUUID();
+    const id = requestId();
     const env: Envelope = { type, id, payload };
     const ack = await new Promise<Ack>((resolve, reject) => {
       const onAbort = () => {

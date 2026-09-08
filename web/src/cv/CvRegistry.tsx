@@ -11,7 +11,7 @@ import {
 } from "react";
 import { useSearchParams } from "react-router-dom";
 
-import { isCancelled } from "../api/client";
+import { ApiError, isCancelled } from "../api/client";
 import { programming } from "../api/ws";
 import { useAuth } from "../auth/AuthContext";
 import { getDecoder } from "../decoders/registry";
@@ -112,7 +112,7 @@ export function CvRegistryProvider({ children }: { children: ReactNode }) {
         rememberRead(cvs);
         const got = decodeAddressFromCvs(cvs, longBit);
         if (!got || got.address < 1) {
-          throw new Error("empty");
+          throw new ApiError(0, "address_read_failed");
         }
         if (got.address !== session.address) {
           retargetCvScopeAddress(got.address);

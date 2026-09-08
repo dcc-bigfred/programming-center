@@ -10,7 +10,7 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
-import { isCancelled } from "../api/client";
+import { ApiError, isCancelled } from "../api/client";
 import { programming } from "../api/ws";
 import { useAuth } from "../auth/AuthContext";
 import AppShell from "../components/AppShell";
@@ -67,7 +67,7 @@ export default function HomePage() {
       const { cvs } = await programming.cvRead({ ...session, cvs: [8] });
       const cv8 = cvs.find((c) => c.cv === 8)?.value;
       if (cv8 === undefined) {
-        throw new Error("empty");
+        throw new ApiError(0, "address_read_failed");
       }
       registry.rememberRead([{ cv: 8, value: cv8 }]);
       const match = matchManufacturer(cv8);

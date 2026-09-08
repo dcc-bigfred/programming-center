@@ -1,6 +1,6 @@
 //! Runtime JSON: `$DATA_DIR/etc/bigfred/programming-center/config.json`.
 
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -122,16 +122,71 @@ impl Default for Config {
 
 pub fn merge_builtin_redirect_uris(uris: &mut Vec<String>) {
     for builtin in BUILTIN_REDIRECT_URIS {
-        if !uris.iter().any(|u| u.trim() == *builtin) {
-            uris.push((*builtin).to_string());
-        }
+        push_unique(uris, (*builtin).to_string());
     }
     for host in ["bigfred.local", "localhost"] {
-        let vite = format!("http://{host}:{VITE_DEV_PORT}/auth/callback");
-        if !uris.iter().any(|u| u.trim() == vite) {
-            uris.push(vite);
+        push_unique(uris, dev_vite_redirect_uri(host));
+    }
+    merge_lan_vite_redirect_uris(uris);
+}
+
+fn push_unique(uris: &mut Vec<String>, uri: String) {
+    if !uris.iter().any(|u| u.trim() == uri) {
+        uris.push(uri);
+    }
+}
+
+#[must_use]
+pub fn dev_vite_redirect_uri(host: &str) -> String {
+    format!("http://{host}:{VITE_DEV_PORT}/auth/callback")
+}
+
+/// Add Vite dev callback URIs for each local IPv4 (tablet / LAN testing).
+pub fn merge_lan_vite_redirect_uris(uris: &mut Vec<String>) {
+    for ip in local_ipv4_addrs() {
+        push_unique(uris, dev_vite_redirect_uri(&ip.to_string()));
+    }
+}
+
+fn local_ipv4_addrs() -> Vec<Ipv4Addr> {
+    let mut out = Vec::new();
+    let Ok(sock) = UdpSocket::bind("0.0.0.0:0") else {
+        return out;
+    };
+    for gateway in ["192.168.0.1:1", "10.0.0.1:1", "8.8.8.8:80"] {
+        if sock.connect(gateway).is_ok() {
+            if let Ok(addr) = sock.local_addr() {
+                if let IpAddr::V4(v4) = addr.ip() {
+                    if !v4.is_loopback() && !out.contains(&v4) {
+                        out.push(v4);
+                    }
+                }
+            }
         }
     }
+    out
+}
+
+fn dev_vite_callback_allowed(uri: &str) -> bool {
+    let uri = uri.trim();
+    let Some(rest) = uri.strip_prefix("http://") else {
+        return false;
+    };
+    let Some((authority, path)) = rest.split_once('/') else {
+        return false;
+    };
+    if path != "auth/callback" {
+        return false;
+    }
+    let Some((host, port)) = authority.rsplit_once(':') else {
+        return false;
+    };
+    if port != VITE_DEV_PORT.to_string() {
+        return false;
+    }
+    host == "localhost"
+        || host.ends_with(".local")
+        || host.parse::<IpAddr>().is_ok()
 }
 
 fn trim_slash(s: &str) -> String {
@@ -218,7 +273,10 @@ impl Config {
     #[must_use]
     pub fn redirect_uri_allowed(&self, uri: &str) -> bool {
         let uri = uri.trim();
-        self.redirect_uris.iter().any(|u| u.trim() == uri)
+        if self.redirect_uris.iter().any(|u| u.trim() == uri) {
+            return true;
+        }
+        dev_vite_callback_allowed(uri)
     }
 }
 
@@ -300,5 +358,21 @@ mod tests {
         );
         assert!(p.station_picker);
         assert!(p.login_required);
+    }
+
+    #[test]
+    fn allows_vite_dev_callback_on_lan_ip() {
+        let cfg = Config::default();
+        assert!(cfg.redirect_uri_allowed("http://192.168.0.86:5176/auth/callback"));
+        assert!(cfg.redirect_uri_allowed("http://localhost:5176/auth/callback"));
+        assert!(!cfg.redirect_uri_allowed("http://192.168.0.86:8092/auth/callback"));
+        assert!(!cfg.redirect_uri_allowed("http://evil.example:5176/auth/callback"));
+    }
+
+    #[test]
+    fn merge_adds_lan_vite_redirects() {
+        let mut uris = Vec::new();
+        merge_builtin_redirect_uris(&mut uris);
+        assert!(uris.iter().any(|u| u.contains(":5176/auth/callback")));
     }
 }
