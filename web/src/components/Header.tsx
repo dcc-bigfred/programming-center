@@ -26,6 +26,7 @@ import {
   type Language,
 } from "../i18n";
 import { readQuery, withQuery } from "../query";
+import PickLocoButton from "./PickLocoButton";
 
 const lightColor = "rgba(255, 255, 255, 0.7)";
 
@@ -154,6 +155,7 @@ export default function Header({
                   ))}
                 </TextField>
               )}
+              <PickLocoButton />
               <TextField
                 type="number"
                 hiddenLabel

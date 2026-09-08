@@ -47,6 +47,16 @@ export interface CommandStation {
   programming: boolean;
 }
 
+export interface CatalogueVehicle {
+  id: string;
+  name: string;
+  number: string;
+  dccAddress: number | null;
+  isDummy: boolean;
+  ownerId: number;
+  carrier: string;
+}
+
 export interface CvEntry {
   cv: number;
   value: number;

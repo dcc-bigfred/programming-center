@@ -1,4 +1,5 @@
 import type {
+  CatalogueVehicle,
   ChangeList,
   CommandStation,
   CvEntry,
@@ -105,6 +106,8 @@ export const api = {
 
   commandStations: (layoutId: number) =>
     request<CommandStation[]>(`/api/v1/layouts/${layoutId}/command-stations`),
+
+  vehicleCatalogue: () => request<CatalogueVehicle[]>("/api/v1/vehicles/catalogue"),
 
   changeLists: (decoder: string) =>
     request<ChangeList[]>(`/api/v1/pc/changelists?decoder=${encodeURIComponent(decoder)}`),
