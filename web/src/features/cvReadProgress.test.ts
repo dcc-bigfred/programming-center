@@ -35,11 +35,10 @@ describe("cvReadProgress", () => {
     expect(progressValue({ total: 3, done: 2, cv: 34, failed: true })).toBeNull();
   });
 
-  it("does not apply values when liveApply is off or the request was cancelled", () => {
+  it("does not apply values when liveApply is off", () => {
     const got = { total: 2, done: 1, cv: 8, value: 145 };
-    expect(entryToApply(true, false, got)).toEqual({ cv: 8, value: 145 });
-    expect(entryToApply(false, false, got)).toBeNull();
-    expect(entryToApply(true, true, got)).toBeNull();
+    expect(entryToApply(true, got)).toEqual({ cv: 8, value: 145 });
+    expect(entryToApply(false, got)).toBeNull();
   });
 
   it("windows a long dump instead of listing every CV", () => {

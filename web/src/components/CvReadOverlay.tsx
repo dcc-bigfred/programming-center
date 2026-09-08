@@ -17,15 +17,10 @@ import { overlayVisibleSlots } from "../features/cvReadProgress";
 
 export default function CvReadOverlay() {
   const { t } = useTranslation();
-  const open = useSyncExternalStore(
+  const { open, progress } = useSyncExternalStore(
     (listener) => programming.subscribeReadBusy(listener),
-    () => programming.isReadBusy(),
-    () => false,
-  );
-  const progress = useSyncExternalStore(
-    (listener) => programming.subscribeReadBusy(listener),
-    () => programming.getReadProgress(),
-    () => null,
+    () => programming.getReadOverlay(),
+    () => ({ open: false, progress: null }),
   );
   const streaming = Boolean(progress?.streaming);
   const readingCv =

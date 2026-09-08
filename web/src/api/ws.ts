@@ -67,6 +67,10 @@ export class ProgrammingClient {
   private readAborts = new Set<AbortController>();
   private progress: ReadProgressState | null = null;
   private ignoreProgress = new Set<string>();
+  private overlaySnap: { open: boolean; progress: ReadProgressState | null } = {
+    open: false,
+    progress: null,
+  };
 
   subscribeReadBusy(listener: () => void): () => void {
     this.readListeners.add(listener);
@@ -81,6 +85,11 @@ export class ProgrammingClient {
 
   getReadProgress(): ReadProgressState | null {
     return this.progress;
+  }
+
+  /** Cached `{ open, progress }` so `useSyncExternalStore` does not loop. */
+  getReadOverlay(): { open: boolean; progress: ReadProgressState | null } {
+    return this.overlaySnap;
   }
 
   cancelReads(): void {
@@ -220,11 +229,13 @@ export class ProgrammingClient {
     this.readBusy = Math.max(0, this.readBusy - 1);
     if (this.readBusy === 0) {
       this.progress = null;
+      this.ignoreProgress.clear();
     }
     this.emitRead();
   }
 
   private emitRead(): void {
+    this.overlaySnap = { open: this.readBusy > 0, progress: this.progress };
     for (const listener of this.readListeners) {
       listener();
     }
@@ -363,7 +374,7 @@ export class ProgrammingClient {
       value: frame.value,
       failed: frame.failed,
     });
-    const entry = entryToApply(this.progress.liveApply, false, {
+    const entry = entryToApply(this.progress.liveApply, {
       total: frame.total,
       done: frame.done,
       current: frame.current,

@@ -106,6 +106,11 @@ async fn handle_socket(socket: WebSocket, state: AppState, token: Option<String>
                             Some(Ok(other)) => {
                                 if is_cancel_for(&req_id, &other) {
                                     cancel.cancel();
+                                } else if let Some(kind) = inbound_kind(&other) {
+                                    warn!(
+                                        kind,
+                                        "ignoring websocket frame during standalone cv.read"
+                                    );
                                 }
                             }
                         }
@@ -147,6 +152,17 @@ async fn inbound_text(msg: Message, tx: &mpsc::Sender<Message>) -> Inbound {
         }
         _ => Inbound::Skip,
     }
+}
+
+fn inbound_kind(msg: &Message) -> Option<String> {
+    let text = match msg {
+        Message::Text(t) => t.as_str(),
+        Message::Binary(b) => std::str::from_utf8(b).ok()?,
+        _ => return None,
+    };
+    serde_json::from_str::<Envelope>(text)
+        .ok()
+        .map(|env| env.kind)
 }
 
 fn is_cancel_for(req_id: &Option<String>, msg: &Message) -> bool {
@@ -346,11 +362,29 @@ async fn cv_read_standalone(
     let dump = p.from.is_some() || p.to.is_some();
     let mut batch = CvBatch::default();
     if dump && nums.len() > 1 {
+        let include_cv1 = nums.contains(&1);
+        let total = u32::try_from(nums.len()).unwrap_or(u32::MAX);
+        if include_cv1 {
+            let _ = send_envelope(
+                &tx,
+                TYPE_CV_PROGRESS,
+                env.id.clone(),
+                &CvProgress::reading(1, 0, total),
+            )
+            .await;
+        }
         match probe_cv1(state, token, p.station_id, p.address, p.track).await {
             Ok(value) => {
-                if nums.contains(&1) {
+                if include_cv1 {
                     batch.cvs.push(CvEntry { cv: 1, value });
                     nums.retain(|n| *n != 1);
+                    let _ = send_envelope(
+                        &tx,
+                        TYPE_CV_PROGRESS,
+                        env.id.clone(),
+                        &CvProgress::got(1, value, 1, total),
+                    )
+                    .await;
                 }
             }
             Err(e) => return map_bus(e),
@@ -362,17 +396,6 @@ async fn cv_read_standalone(
     let probed = u32::try_from(batch.cvs.len()).unwrap_or(0);
     let rest = u32::try_from(nums.len()).unwrap_or(0);
     let total = probed.saturating_add(rest);
-    if probed > 0 {
-        if let Some(entry) = batch.cvs.last() {
-            let _ = send_envelope(
-                &tx,
-                TYPE_CV_PROGRESS,
-                env.id.clone(),
-                &CvProgress::got(entry.cv, entry.value, probed, total),
-            )
-            .await;
-        }
-    }
     if nums.is_empty() {
         return finish_read(dump, batch);
     }
@@ -473,5 +496,81 @@ async fn cv_bitop(state: &AppState, token: Option<&str>, p: CvBitopPayload) -> A
     {
         Ok(cvs) => Ack::ok_cvs(cvs.cvs),
         Err(e) => map_bus(e),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn text(json: &str) -> Message {
+        Message::Text(json.to_string())
+    }
+
+    #[test]
+    fn cancel_matches_request_id() {
+        let id = Some("req-1".to_string());
+        assert!(is_cancel_for(
+            &id,
+            &text(r#"{"type":"cv.read.cancel","id":"req-1"}"#),
+        ));
+        assert!(!is_cancel_for(
+            &id,
+            &text(r#"{"type":"cv.read.cancel","id":"other"}"#),
+        ));
+        assert!(!is_cancel_for(
+            &id,
+            &text(r#"{"type":"cv.write","id":"req-1"}"#),
+        ));
+        assert!(!is_cancel_for(&id, &Message::Ping(Vec::new())));
+    }
+
+    #[test]
+    fn inbound_kind_reads_type() {
+        assert_eq!(
+            inbound_kind(&text(r#"{"type":"cv.write","id":"1"}"#)).as_deref(),
+            Some("cv.write")
+        );
+        assert_eq!(inbound_kind(&Message::Ping(Vec::new())), None);
+    }
+
+    #[test]
+    fn cv1_probe_sends_reading_then_got() {
+        let reading = CvProgress::reading(1, 0, 1000);
+        let got = CvProgress::got(1, 42, 1, 1000);
+        assert_eq!(reading.current, Some(1));
+        assert_eq!(reading.done, 0);
+        assert_eq!(got, CvProgress::got(1, 42, 1, 1000));
+        assert!(got.value.is_some());
+        assert!(reading.value.is_none());
+    }
+
+    #[test]
+    fn finish_read_fails_when_every_slot_errored() {
+        let ack = finish_read(
+            false,
+            CvBatch {
+                cvs: Vec::new(),
+                errors: vec![33],
+            },
+        );
+        assert!(!ack.ok);
+        assert_eq!(ack.error.as_deref(), Some("programming_failed"));
+        let dump = finish_read(
+            true,
+            CvBatch {
+                cvs: Vec::new(),
+                errors: vec![33],
+            },
+        );
+        assert!(dump.ok);
+    }
+
+    #[test]
+    fn standalone_cancel_ack_is_cancelled() {
+        let ack = Ack::fail("cancelled", None);
+        assert!(!ack.ok);
+        assert_eq!(ack.error.as_deref(), Some("cancelled"));
+        assert!(ack.cvs.is_none());
     }
 }

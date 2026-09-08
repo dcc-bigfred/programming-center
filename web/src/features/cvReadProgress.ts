@@ -2,7 +2,7 @@ import { ADDRESS_CVS } from "./dccAddress";
 
 export const CV_MIN = 1;
 export const CV_MAX = 1024;
-export const OVERLAY_LIST_FULL_MAX = 80;
+const OVERLAY_LIST_FULL_MAX = 80;
 export const OVERLAY_WINDOW = 21;
 
 export type CvSlotStatus = "pending" | "reading" | "ok" | "failed";
@@ -35,7 +35,7 @@ export function validCv(cv: number): boolean {
   return Number.isInteger(cv) && cv >= CV_MIN && cv <= CV_MAX;
 }
 
-/** Same union as pc-core `expand_cv_list`. */
+/** Same union as `pc-core::expand_cv_list` (list ∪ from–to, optional skip of CV 1/17/18/29). */
 export function expandCvList(
   cvs: number[] | undefined,
   from?: number,
@@ -123,12 +123,11 @@ export function progressValue(payload: CvProgressPayload): { cv: number; value: 
   return { cv: payload.cv, value: payload.value };
 }
 
-/** Live table apply: skip backup dumps and cancelled requests. */
+/** Live table apply: skip backup dumps (`liveApply: false`). */
 export function entryToApply(
   liveApply: boolean,
-  ignored: boolean,
   payload: CvProgressPayload,
 ): { cv: number; value: number } | null {
-  if (!liveApply || ignored) return null;
+  if (!liveApply) return null;
   return progressValue(payload);
 }
