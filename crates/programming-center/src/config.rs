@@ -184,9 +184,7 @@ fn dev_vite_callback_allowed(uri: &str) -> bool {
     if port != VITE_DEV_PORT.to_string() {
         return false;
     }
-    host == "localhost"
-        || host.ends_with(".local")
-        || host.parse::<IpAddr>().is_ok()
+    host == "localhost" || host.ends_with(".local") || host.parse::<IpAddr>().is_ok()
 }
 
 fn trim_slash(s: &str) -> String {
