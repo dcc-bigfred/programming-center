@@ -2,11 +2,15 @@
 
 Decoder programming made easy and for everyone.
 
-<img src="docs/pc-logo.png" alt="BigFred Programming Center" width="256">
+<p align="center">
+  <img src="docs/pc-logo.png" alt="BigFred Programming Center" width="256">
+</p>
 
 ## What you can do
 
-<img src="docs/screenshot.png" alt="BigFred Programming Center" width="256">
+<p align="center">
+  <img src="docs/screenshot.png" alt="BigFred Programming Center" width="512">
+</p>
 
 - Pick a decoder in the left menu (ZIMO MS450, ESU LokSound v4 / v5, RailBOX RB23xx)
 - Read and write CVs one at a time (accordion list from the decoder catalog)
