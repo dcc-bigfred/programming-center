@@ -118,6 +118,6 @@ fn batch_from_ack(ack: &bigfred_client::Ack, fallback: &[CvEntry]) -> CvBatch {
     };
     CvBatch {
         cvs,
-        errors: ack.errors.clone().unwrap_or_default(),
+        errors: Vec::new(),
     }
 }

@@ -24,6 +24,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: dcc-bigfred/bigfred
+          # `request_to` is not on master yet; needed to pin the programming station.
+          ref: feat/dccbus-explicit-station
           path: bigfred
 
       - name: Link bigfred for path dependency
@@ -36,6 +38,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: .
+
+      - name: Ensure rust-embed folder
+        run: mkdir -p web/dist
 
       - name: Format
         run: cargo fmt --all -- --check
@@ -75,6 +80,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: dcc-bigfred/bigfred
+          # `request_to` is not on master yet; needed to pin the programming station.
+          ref: feat/dccbus-explicit-station
           path: bigfred
 
       - name: Link bigfred for path dependency
