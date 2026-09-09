@@ -10,6 +10,7 @@ const { mockAuth, cvRead, cvWrite } = vi.hoisted(() => {
   const config: PublicConfig = {
     enabled: true,
     mode: "standalone",
+    programmingMode: "z21",
     ssoClientId: "programming-center",
     redirectUris: [],
     idleTimeoutSecs: 86400,

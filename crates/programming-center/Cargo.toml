@@ -20,7 +20,8 @@ pc-core = { path = "../pc-core" }
 pc-proto = { path = "../pc-proto" }
 bigfred-shared-daemon = { git = "https://github.com/dcc-bigfred/rust-commons.git", branch = "main", default-features = false, features = ["config"] }
 bigfred-client = { path = "../../../bigfred/rust/crates/bigfred-client" }
-dcc-bigfred-proto-z21 = { git = "https://github.com/dcc-bigfred/proto.git", branch = "main" }
+dcc-bigfred-proto-z21.workspace = true
+heapless.workspace = true
 axum = { version = "0.7", features = ["json", "query", "ws"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "time", "sync"] }
 tokio-util = { version = "0.7", default-features = false, features = ["rt"] }

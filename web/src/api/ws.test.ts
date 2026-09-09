@@ -190,4 +190,62 @@ describe("ProgrammingClient progress", () => {
       true,
     );
   });
+
+  it("sends address.set as a write (cancel uses cv.write.cancel)", async () => {
+    const done = client.addressSet({ address: 13, newAddress: 9728, longBit: 5 });
+    await Promise.resolve();
+    await Promise.resolve();
+    const socket = FakeSocket.last!;
+    socket.open();
+    await Promise.resolve();
+    await Promise.resolve();
+    const env = [...socket.sent]
+      .reverse()
+      .map((raw) => JSON.parse(raw as string) as { id: string; type: string; payload?: unknown })
+      .find((e) => e.type === "address.set");
+    expect(env).toBeDefined();
+    expect(env!.payload).toMatchObject({ address: 13, newAddress: 9728, longBit: 5 });
+    socket.push("ack", env!.id, {
+      ok: true,
+      cvs: [
+        { cv: 17, value: 230 },
+        { cv: 18, value: 0 },
+        { cv: 29, value: 62 },
+      ],
+    });
+    await expect(done).resolves.toMatchObject({
+      cvs: [
+        { cv: 17, value: 230 },
+        { cv: 18, value: 0 },
+        { cv: 29, value: 62 },
+      ],
+    });
+  });
+
+  it("sends railcomPlus on address.set", async () => {
+    const done = client.addressSet({
+      address: 13,
+      newAddress: 2138,
+      longBit: 5,
+      railcomPlus: false,
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    const socket = FakeSocket.last!;
+    socket.open();
+    await Promise.resolve();
+    await Promise.resolve();
+    const env = [...socket.sent]
+      .reverse()
+      .map((raw) => JSON.parse(raw as string) as { id: string; type: string; payload?: unknown })
+      .find((e) => e.type === "address.set");
+    expect(env!.payload).toMatchObject({
+      address: 13,
+      newAddress: 2138,
+      longBit: 5,
+      railcomPlus: false,
+    });
+    socket.push("ack", env!.id, { ok: true, cvs: [] });
+    await done;
+  });
 });

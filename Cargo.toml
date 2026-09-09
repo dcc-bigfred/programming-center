@@ -22,6 +22,11 @@ dbg_macro = "deny"
 todo = "deny"
 unimplemented = "deny"
 
+[workspace.dependencies]
+# Sibling checkout; CI pins proto to tag go/v0.1.1.
+dcc-bigfred-proto-z21 = { path = "../proto/rust/z21" }
+heapless = "0.8"
+
 [profile.release]
 opt-level = "z"
 lto = true

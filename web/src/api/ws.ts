@@ -17,6 +17,7 @@ const TYPE_CV_WRITE_CANCEL = "cv.write.cancel";
 const TYPE_CV_PROGRESS = "cv.progress";
 const TYPE_CV_WRITE = "cv.write";
 const TYPE_CV_BITOP = "cv.bitop";
+const TYPE_ADDRESS_SET = "address.set";
 
 const REQUEST_IDLE_MS = 30_000;
 
@@ -254,6 +255,30 @@ export class ProgrammingClient {
     return ack.cvs ?? [];
   }
 
+  /** ESU service-mode address write. Always programming track; cancel via cv.write.cancel. */
+  async addressSet(input: {
+    stationId?: number;
+    address: number;
+    newAddress: number;
+    longBit?: number;
+    railcomPlus?: boolean;
+    signal?: AbortSignal;
+  }): Promise<{ cvs: CvEntry[]; errors: number[] }> {
+    const ack = await this.request(
+      TYPE_ADDRESS_SET,
+      {
+        stationId: input.stationId,
+        address: input.address,
+        newAddress: input.newAddress,
+        longBit: input.longBit,
+        railcomPlus: input.railcomPlus,
+      },
+      "write",
+      input.signal,
+    );
+    return { cvs: ack.cvs ?? [], errors: ack.errors ?? [] };
+  }
+
   private async runRead(
     outer: AbortSignal | undefined,
     fn: (signal: AbortSignal) => Promise<Ack>,
@@ -414,7 +439,7 @@ export class ProgrammingClient {
     this.flushApplyBuffer();
     flushCvTable();
     if (!ack.ok) {
-      throw new ApiError(0, ack.error ?? "generic", ack.detail);
+      throw new ApiError(0, ack.error ?? "generic", ack.detail, ack.cvs);
     }
     return ack;
   }

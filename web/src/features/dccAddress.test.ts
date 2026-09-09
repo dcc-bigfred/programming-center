@@ -1,7 +1,9 @@
 import {
   ADDRESS_CVS,
+  ADDRESS_READ_CVS,
   CV29_LONG_BIT,
   LONG_MAX,
+  RAILCOM_PLUS_MASK,
   SHORT_MAX,
   bitopForLong,
   decodeAddress,
@@ -9,6 +11,7 @@ import {
   encodeLongBytes,
   isLongAddressBit,
   planWrite,
+  readRailcomPlus,
 } from "./dccAddress";
 
 describe("dccAddress", () => {
@@ -77,5 +80,13 @@ describe("dccAddress", () => {
 
   it("exposes address CVs for a programming-track read", () => {
     expect([...ADDRESS_CVS]).toEqual([1, 17, 18, 29]);
+    expect([...ADDRESS_READ_CVS]).toEqual([1, 17, 18, 28, 29]);
+  });
+
+  it("reads RailComPlus from CV 28 bit 7", () => {
+    expect(readRailcomPlus([])).toBeNull();
+    expect(readRailcomPlus([{ cv: 28, value: 131 }])).toBe(true);
+    expect(readRailcomPlus([{ cv: 28, value: 3 }])).toBe(false);
+    expect(RAILCOM_PLUS_MASK).toBe(0x80);
   });
 });

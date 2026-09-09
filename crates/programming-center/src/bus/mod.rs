@@ -5,6 +5,7 @@ mod z21;
 mod z21_udp;
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use tokio::sync::RwLock;
@@ -15,11 +16,12 @@ use tokio_util::sync::CancellationToken;
 use pc_core::{CvBatch, CvEntry, Track};
 use pc_proto::CvProgress;
 
-use crate::config::{Config, IntegrationMode};
+use crate::config::{Config, ProgrammingMode};
 use crate::error::ApiError;
 
 pub use dcc_bus::DccBusProgrammer;
 pub use z21::Z21Programmer;
+pub use z21_udp::Observed;
 
 /// Standalone read: stream `CvProgress` and honour cancel between CVs.
 pub struct CvReadReport {
@@ -51,7 +53,12 @@ pub trait ProgrammingBus: Send + Sync {
     ) -> Result<CvBatch, ApiError>;
 }
 
-/// Owns both backends; [`Hub::select`] reads live `mode`.
+/// Owns both backends; [`Hub::adapter`] reads live `programmingMode`.
+///
+/// `read_cvs` / `write_cvs` dispatch through the [`ProgrammingBus`] trait so the
+/// contract is shared, but selection is a static `match` (two arms) rather than
+/// `Box<dyn>` — cheaper and keeps the Z21-specific methods (`observe_prog`,
+/// `read_cvs_reporting`) on the concrete [`Z21Programmer`].
 #[derive(Clone)]
 pub struct Hub {
     dcc: DccBusProgrammer,
@@ -66,10 +73,17 @@ impl Hub {
         }
     }
 
+    fn adapter(&self, mode: ProgrammingMode) -> &dyn ProgrammingBus {
+        match mode {
+            ProgrammingMode::Z21 => self.z21.as_ref(),
+            ProgrammingMode::Bigfred => &self.dcc,
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub async fn read_cvs(
         &self,
-        mode: IntegrationMode,
+        mode: ProgrammingMode,
         token: Option<&str>,
         station_id: Option<u64>,
         address: u16,
@@ -77,24 +91,15 @@ impl Hub {
         track: Track,
         cancel: Option<&CancellationToken>,
     ) -> Result<CvBatch, ApiError> {
-        match mode {
-            IntegrationMode::Standalone => {
-                self.z21
-                    .read_cvs(token, station_id, address, cvs, track, cancel)
-                    .await
-            }
-            IntegrationMode::Bigfred => {
-                self.dcc
-                    .read_cvs(token, station_id, address, cvs, track, cancel)
-                    .await
-            }
-        }
+        self.adapter(mode)
+            .read_cvs(token, station_id, address, cvs, track, cancel)
+            .await
     }
 
     #[allow(clippy::too_many_arguments)]
     pub async fn write_cvs(
         &self,
-        mode: IntegrationMode,
+        mode: ProgrammingMode,
         token: Option<&str>,
         station_id: Option<u64>,
         address: u16,
@@ -102,25 +107,16 @@ impl Hub {
         track: Track,
         cancel: Option<&CancellationToken>,
     ) -> Result<CvBatch, ApiError> {
-        match mode {
-            IntegrationMode::Standalone => {
-                self.z21
-                    .write_cvs(token, station_id, address, cvs, track, cancel)
-                    .await
-            }
-            IntegrationMode::Bigfred => {
-                self.dcc
-                    .write_cvs(token, station_id, address, cvs, track, cancel)
-                    .await
-            }
-        }
+        self.adapter(mode)
+            .write_cvs(token, station_id, address, cvs, track, cancel)
+            .await
     }
 
     pub fn drop_z21(&self) {
         self.z21.invalidate();
     }
 
-    /// Standalone only: per-CV progress on `progress`, stop on `cancel`.
+    /// Z21 only: per-CV progress on `progress`, stop on `cancel`.
     pub async fn read_cvs_reporting(
         &self,
         address: u16,
@@ -132,6 +128,25 @@ impl Hub {
         self.z21
             .read_cvs_reporting(address, cvs, track, cancel, report)
             .await
+    }
+
+    /// Z21 only: listen until the command station leaves programming mode.
+    pub async fn observe_prog(
+        &self,
+        mode: ProgrammingMode,
+        until: Duration,
+        cancel: &CancellationToken,
+    ) -> Option<Observed> {
+        match mode {
+            ProgrammingMode::Z21 => match self.z21.observe(until, Some(cancel)).await {
+                Ok(got) => Some(got),
+                Err(err) => {
+                    tracing::debug!(code = %err.code, "z21 observe_prog failed");
+                    None
+                }
+            },
+            ProgrammingMode::Bigfred => None,
+        }
     }
 }
 

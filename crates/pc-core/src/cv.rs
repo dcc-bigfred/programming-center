@@ -18,7 +18,8 @@ pub struct CvEntry {
     pub value: u8,
 }
 
-/// Track used for a CV operation. Distinct from JSON `mode` (bigfred vs standalone).
+/// Track used for a CV operation. Distinct from JSON `mode` (SSO) and
+/// `programmingMode` (dcc-bus vs Z21).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Track {

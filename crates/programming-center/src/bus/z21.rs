@@ -14,7 +14,7 @@ use pc_proto::CvProgress;
 use crate::config::Config;
 use crate::error::ApiError;
 
-use super::z21_udp::{CvError, Z21Client};
+use super::z21_udp::{CvError, Observed, Z21Client};
 use super::ProgrammingBus;
 
 const SETTLE: Duration = Duration::from_millis(300);
@@ -67,9 +67,9 @@ impl Z21Programmer {
         let z21 = cfg.z21.clone();
         drop(cfg);
         if !z21.is_configured() {
-            tracing::warn!("z21 hostname/port missing in standalone config");
+            tracing::warn!("z21 hostname/port missing");
             return Err(ApiError::unavailable("z21_not_configured")
-                .with_detail("z21.hostname and z21.port are required in standalone mode"));
+                .with_detail("z21.hostname and z21.port are required when programmingMode is z21"));
         }
         let host = z21.hostname.trim().to_string();
         let gen = self.generation.load(Ordering::Acquire);
@@ -209,6 +209,23 @@ impl Z21Programmer {
             return Err(api);
         }
         Ok(out)
+    }
+
+    /// Wait until the Z21 leaves programming mode (or `until` elapses).
+    pub async fn observe(
+        &self,
+        until: Duration,
+        cancel: Option<&CancellationToken>,
+    ) -> Result<Observed, ApiError> {
+        let session = self.session(cancel).await?;
+        session
+            .client
+            .observe(until, cancel)
+            .await
+            .map_err(|err| match err {
+                CvError::Cancelled => ApiError::cancelled(),
+                other => map_unreachable(other),
+            })
     }
 }
 

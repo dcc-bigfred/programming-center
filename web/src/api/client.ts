@@ -16,11 +16,13 @@ export const STATE_KEY = "programming-center.oauthState";
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
+  readonly cvs?: CvEntry[];
 
-  constructor(status: number, code: string, detail?: string) {
+  constructor(status: number, code: string, detail?: string, cvs?: CvEntry[]) {
     super(detail ? `${code}: ${detail}` : code);
     this.status = status;
     this.code = code;
+    this.cvs = cvs;
   }
 }
 

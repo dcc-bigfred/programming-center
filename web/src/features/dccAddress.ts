@@ -1,11 +1,29 @@
-/** NMRA short (CV 1) / long (CV 17+18, CV 29 bit 5) DCC address. */
+/** NMRA short (CV 1) / long (CV 17+18, CV 29 bit 5) DCC address.
+ *
+ * Constants are re-exported from `generated/proto-constants.ts` (the single
+ * TS source mirroring `proto/z21`). Logic here is the TS-side twin of the
+ * Rust atoms in `proto/rust/z21/src/lib.rs`.
+ */
+export {
+  SHORT_MAX,
+  LONG_MAX,
+  CV29_LONG_BIT,
+  CV29_LONG_MASK,
+  RAILCOM_PLUS_CV,
+  RAILCOM_PLUS_MASK,
+} from "../generated/proto-constants";
 
-export const SHORT_MAX = 127;
-export const LONG_MAX = 10239;
-export const CV29_LONG_BIT = 5;
-export const CV29_LONG_MASK = 1 << CV29_LONG_BIT;
+import {
+  SHORT_MAX,
+  LONG_MAX,
+  CV29_LONG_BIT,
+  RAILCOM_PLUS_CV,
+  RAILCOM_PLUS_MASK,
+} from "../generated/proto-constants";
 
 export const ADDRESS_CVS = [1, 17, 18, 29] as const;
+/** Address CVs plus CV 28 (RailComPlus). A NACK on 28 is tolerated by the page. */
+export const ADDRESS_READ_CVS = [1, 17, 18, 28, 29] as const;
 
 export function isLongAddressBit(cv29: number, bit = CV29_LONG_BIT): boolean {
   return ((cv29 >> bit) & 1) === 1;
@@ -24,6 +42,16 @@ export function decodeAddressFromCvs(
     return null;
   }
   return decodeAddress(cv1, cv17, cv18, cv29, longBit);
+}
+
+export function readRailcomPlus(
+  cvs: ReadonlyArray<{ cv: number; value: number }>,
+): boolean | null {
+  const entry = cvs.find((e) => e.cv === RAILCOM_PLUS_CV);
+  if (entry === undefined) {
+    return null;
+  }
+  return (entry.value & RAILCOM_PLUS_MASK) !== 0;
 }
 
 export function decodeAddress(
@@ -61,7 +89,7 @@ export function bitopForLong(
   return { andMask: (~mask) & 0xff, orMask: 0 };
 }
 
-/** 1–127 → short (CV 1); 128–10239 → long (CV 17/18). */
+/** 1–127 → short (CV 1); 128–10239 → long (CV 17/18). UI preview only — writes go through `address.set`. */
 export function planWrite(address: number): {
   cvs: { cv: number; value: number }[];
   long: boolean;

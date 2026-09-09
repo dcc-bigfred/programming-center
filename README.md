@@ -42,6 +42,7 @@ to `http` / CORS need a process restart.
   "http": "0.0.0.0:8092",
   "enabled": false,
   "mode": "bigfred",
+  "programmingMode": "bigfred",
   "bigfred": { "address": "bigfred.local:8080" },
   "z21": { "hostname": "192.168.4.1", "port": 21150 },
   "ssoClientId": "programming-center",
@@ -56,8 +57,14 @@ to `http` / CORS need a process restart.
 }
 ```
 
-- `mode: "bigfred"` — SSO, proxy, command-station picker, CV via dcc-bus.
-- `mode: "standalone"` — no BigFred; CV via UDP to `z21.hostname:port`.
+- `mode: "bigfred"` — SSO, proxy, command-station picker (BigFred login).
+- `mode: "standalone"` — no BigFred sign-in or proxy.
+- `programmingMode: "bigfred"` (default) — CV via dcc-bus.
+- `programmingMode: "z21"` — CV via UDP to `z21.hostname:port`. Works with
+  either SSO mode, so BigFred login can sit in front of a direct Z21.
+
+Existing standalone kiosks that talk to a Z21 must set
+`"programmingMode": "z21"` (the default is now dcc-bus).
 
 `bigfred.address` is `host:port` without a scheme. The daemon adds `http://`
 and `ws://`.

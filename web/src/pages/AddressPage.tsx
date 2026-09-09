@@ -1,138 +1,85 @@
 import Button from "@mui/material/Button";
+import FormControl from "@mui/material/FormControl";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import FormLabel from "@mui/material/FormLabel";
+import Radio from "@mui/material/Radio";
+import RadioGroup from "@mui/material/RadioGroup";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
-import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Navigate, useSearchParams } from "react-router-dom";
 
-import { ApiError, isCancelled } from "../api/client";
-import { programming } from "../api/ws";
 import AppShell from "../components/AppShell";
 import ErrorAlert from "../components/ErrorAlert";
-import { useCvRegistry } from "../cv/CvRegistry";
 import { getDecoder } from "../decoders/registry";
-import {
-  ADDRESS_CVS,
-  LONG_MAX,
-  bitopForLong,
-  decodeAddressFromCvs,
-  planWrite,
-} from "../features/dccAddress";
-import { addressNumber, readQuery, stationNumber } from "../query";
-import { useAuth } from "../auth/AuthContext";
+import { LONG_MAX } from "../features/dccAddress";
+import { readQuery } from "../query";
+
+import { useAddressProgrammer } from "./useAddressProgrammer";
 
 export default function AddressPage() {
   const { t } = useTranslation();
-  const { config } = useAuth();
-  const registry = useCvRegistry();
   const [params] = useSearchParams();
   const query = readQuery(params);
   const decoder = getDecoder(query.decoder);
-  const headerAddress = addressNumber(query.address);
-  const [draft, setDraft] = useState(headerAddress >= 1 ? String(headerAddress) : "");
-  const [mode, setMode] = useState<"short" | "long" | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<unknown>(null);
-
-  const session = useMemo(
-    () => ({
-      stationId: config?.stationPicker ? stationNumber(query.station) : undefined,
-      address: headerAddress,
-      track: query.track,
-    }),
-    [config?.stationPicker, query.station, headerAddress, query.track],
-  );
-
-  const parsed = Number(draft);
-  const plan = planWrite(parsed);
   const longBit = decoder?.longAddressBit ?? 5;
 
-  useEffect(() => {
-    if (headerAddress >= 1) setDraft(String(headerAddress));
-  }, [headerAddress]);
-
-  useEffect(() => {
-    const entries = ADDRESS_CVS.flatMap((cv) => {
-      const value = registry.get(cv);
-      return value === undefined ? [] : [{ cv, value }];
-    });
-    const got = decodeAddressFromCvs(entries, longBit);
-    if (!got || got.address < 1) return;
-    setDraft(String(got.address));
-    setMode(got.long ? "long" : "short");
-  }, [registry.diffs, longBit]);
+  const vm = useAddressProgrammer(longBit);
 
   if (!decoder || !decoder.features.includes("address")) {
     return <Navigate to={{ pathname: "/", search: params.toString() }} replace />;
   }
 
-  const stagePlan = async (next: NonNullable<ReturnType<typeof planWrite>>) => {
-    registry.setMany(next.cvs);
-    setMode(next.long ? "long" : "short");
-    try {
-      await registry.ensureRead([29]);
-    } catch (err) {
-      if (!isCancelled(err)) setError(err);
-      return;
-    }
-    const bitop = bitopForLong(next.long, longBit);
-    registry.setBits(29, bitop.andMask, bitop.orMask);
-  };
-
-  const applyDecoded = (cvs: { cv: number; value: number }[]) => {
-    const got = decodeAddressFromCvs(cvs, longBit);
-    if (!got || got.address < 1) {
-      throw new ApiError(0, "cv_read_empty");
-    }
-    setDraft(String(got.address));
-    setMode(got.long ? "long" : "short");
-  };
-
-  const readAll = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      const { cvs } = await programming.cvRead({ ...session, cvs: [...ADDRESS_CVS] });
-      registry.rememberRead(cvs);
-      applyDecoded(cvs);
-    } catch (err) {
-      if (!isCancelled(err)) setError(err);
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <AppShell>
       <Stack spacing={3}>
-        {error ? <ErrorAlert error={error} /> : null}
-        <Typography color="text.secondary">{t("address.hint")}</Typography>
+        {vm.error ? <ErrorAlert error={vm.error} /> : null}
         <TextField
           type="number"
           label={t("address.value")}
           inputProps={{ min: 1, max: LONG_MAX }}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={() => {
-            const planned = planWrite(Number(draft));
-            if (planned) void stagePlan(planned);
-          }}
+          value={vm.draft}
+          onChange={(e) => vm.setDraft(e.target.value)}
         />
         <Typography color="text.secondary">
-          {plan
-            ? plan.long
+          {vm.plan
+            ? vm.plan.long
               ? t("address.modeLong")
               : t("address.modeShort")
-            : mode === null
+            : vm.mode === null
               ? t("address.unread")
-              : mode === "long"
+              : vm.mode === "long"
                 ? t("address.modeLong")
                 : t("address.modeShort")}
         </Typography>
+        <FormControl disabled={vm.busy || !vm.plusKnown}>
+          <FormLabel>{t("address.railcomPlus")}</FormLabel>
+          <RadioGroup
+            value={vm.plusChoice === null ? "" : vm.plusChoice ? "on" : "off"}
+            onChange={(e) => vm.setPlusChoice(e.target.value === "on")}
+          >
+            <FormControlLabel
+              value="on"
+              control={<Radio />}
+              label={t("address.railcomPlusOn")}
+            />
+            <FormControlLabel
+              value="off"
+              control={<Radio />}
+              label={t("address.railcomPlusOff")}
+            />
+          </RadioGroup>
+        </FormControl>
+        <Typography color="text.secondary">
+          {vm.plusKnown ? t("address.railcomPlusHint") : t("address.railcomPlusUnknown")}
+        </Typography>
         <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
-          <Button variant="outlined" disabled={busy} onClick={() => void readAll()}>
+          <Button variant="outlined" disabled={vm.busy} onClick={() => void vm.readAll()}>
             {t("address.read")}
+          </Button>
+          <Button variant="contained" disabled={!vm.canApply} onClick={() => void vm.apply()}>
+            {t("address.save")}
           </Button>
         </Stack>
       </Stack>

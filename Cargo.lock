@@ -362,7 +362,6 @@ checksum = "4583a4551df46e2792f82ceeac45e850d2e2d5debba0b91f102385cda5b11f06"
 [[package]]
 name = "dcc-bigfred-proto-z21"
 version = "0.1.0"
-source = "git+https://github.com/dcc-bigfred/proto.git?branch=main#8cab3db36ba2f5c3c75776c68a747373e7248f12"
 dependencies = [
  "heapless",
 ]
@@ -1195,6 +1194,7 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 name = "pc-core"
 version = "0.1.0"
 dependencies = [
+ "dcc-bigfred-proto-z21",
  "serde",
 ]
 
@@ -1271,6 +1271,7 @@ dependencies = [
  "diesel",
  "diesel_migrations",
  "futures",
+ "heapless",
  "libsqlite3-sys",
  "pc-core",
  "pc-proto",

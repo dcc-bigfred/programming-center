@@ -9,6 +9,7 @@ const { mockAuth, vehicleCatalogue } = vi.hoisted(() => {
   const config: PublicConfig = {
     enabled: true,
     mode: "bigfred",
+    programmingMode: "bigfred",
     ssoClientId: "programming-center",
     redirectUris: [],
     idleTimeoutSecs: 86400,

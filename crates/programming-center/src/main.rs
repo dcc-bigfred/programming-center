@@ -2,6 +2,7 @@
 //!
 //! Memory profile: **allocation-conscious** (HTTP/tokio kiosk).
 
+mod address;
 mod bus;
 mod changelists;
 mod config;
@@ -103,6 +104,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cors_origins = cfg.cors_origins.clone();
     let enabled = cfg.enabled;
     let mode = cfg.mode;
+    let programming_mode = cfg.programming_mode;
     let bigfred = cfg.bigfred_api_base();
     let z21 = format!("{}:{}", cfg.z21.hostname.trim(), cfg.z21.port);
 
@@ -149,6 +151,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         %addr,
         enabled,
         ?mode,
+        ?programming_mode,
         bigfred = %bigfred,
         z21 = %z21,
         "programming-center listening"
@@ -215,6 +218,7 @@ fn spawn_config_reloader(
                     }
                     let view = new_cfg.bigfred_view(&data_dir);
                     let mode = new_cfg.mode;
+                    let programming_mode = new_cfg.programming_mode;
                     let z21 = format!("{}:{}", new_cfg.z21.hostname.trim(), new_cfg.z21.port);
                     {
                         let mut guard = cfg.write().await;
@@ -225,6 +229,7 @@ fn spawn_config_reloader(
                     tracing::info!(
                         path = %config_path.display(),
                         ?mode,
+                        ?programming_mode,
                         z21 = %z21,
                         "config reloaded"
                     );

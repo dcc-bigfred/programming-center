@@ -1,4 +1,4 @@
-//! Connected-UDP Z21 client. Framing from `dcc-bigfred-proto-z21`.
+//! Connected-UDP Z21 client. Framing and record parsing from `dcc-bigfred-proto-z21`.
 
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -11,6 +11,20 @@ use tokio_util::sync::CancellationToken;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 const HELLO_TIMEOUT: Duration = Duration::from_secs(3);
+/// Driving + system state + all locos + RailCom for all locos (FW 1.29+).
+const BROADCAST_FLAGS: u32 = 0x0005_0101;
+
+/// Unsolicited programming-track / RailCom traffic while waiting to leave service mode.
+///
+/// `railcom` is bounded by [`z21::RAILCOM_ADDRS_MAX`] at ingest time; the bound
+/// is structural (heapless `Vec`), so a flood of RailCom frames cannot grow it.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Observed {
+    pub prog_mode_ended: bool,
+    pub railcom: heapless::Vec<u16, { z21::RAILCOM_ADDRS_MAX }>,
+    pub central_state: Option<u8>,
+    pub prog_current_ma: Option<i16>,
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum CvError {
@@ -30,7 +44,10 @@ pub struct Z21Client {
     peer: SocketAddr,
     sock: UdpSocket,
     codec: z21::Client,
-    io: Mutex<()>,
+    /// Serializes the single Z21 programming slot: only one CV read/write may
+    /// be in flight at a time. `observe()` deliberately does NOT hold this lock
+    /// (it listens for unsolicited broadcasts while a previous write settles).
+    slot: Mutex<()>,
     timeout: Duration,
 }
 
@@ -44,7 +61,7 @@ impl Z21Client {
             peer: addr,
             sock,
             codec: z21::Client::new(),
-            io: Mutex::new(()),
+            slot: Mutex::new(()),
             timeout: DEFAULT_TIMEOUT,
         };
         match client.hello().await {
@@ -69,7 +86,7 @@ impl Z21Client {
         cv: u16,
         cancel: Option<&CancellationToken>,
     ) -> Result<u8, CvError> {
-        let _g = self.io.lock().await;
+        let _g = self.slot.lock().await;
         self.read_once_or_retry(&z21::Command::CvRead { cv }, cv, cancel)
             .await
     }
@@ -80,7 +97,7 @@ impl Z21Client {
         value: u8,
         cancel: Option<&CancellationToken>,
     ) -> Result<u8, CvError> {
-        let _g = self.io.lock().await;
+        let _g = self.slot.lock().await;
         self.read_once_or_retry(&z21::Command::CvWrite { cv, value }, cv, cancel)
             .await
     }
@@ -91,7 +108,7 @@ impl Z21Client {
         cv: u16,
         cancel: Option<&CancellationToken>,
     ) -> Result<u8, CvError> {
-        let _g = self.io.lock().await;
+        let _g = self.slot.lock().await;
         self.read_once_or_retry(&z21::Command::PomRead { addr, cv }, cv, cancel)
             .await
     }
@@ -103,7 +120,7 @@ impl Z21Client {
         value: u8,
         cancel: Option<&CancellationToken>,
     ) -> Result<(), CvError> {
-        let _g = self.io.lock().await;
+        let _g = self.slot.lock().await;
         if cancel.is_some_and(CancellationToken::is_cancelled) {
             return Err(CvError::Cancelled);
         }
@@ -113,6 +130,78 @@ impl Z21Client {
         Ok(())
     }
 
+    /// Listen until `LAN_X_BC_TRACK_POWER_ON` (`61 01`) or `until`, collecting RailCom.
+    pub async fn observe(
+        &self,
+        until: Duration,
+        cancel: Option<&CancellationToken>,
+    ) -> Result<Observed, CvError> {
+        if cancel.is_some_and(CancellationToken::is_cancelled) {
+            return Err(CvError::Cancelled);
+        }
+        let deadline = Instant::now() + until;
+        let mut observed = Observed::default();
+        let mut buf = [0u8; 1500];
+        loop {
+            if cancel.is_some_and(CancellationToken::is_cancelled) {
+                self.drain();
+                return Err(CvError::Cancelled);
+            }
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                tracing::debug!(
+                    peer = %self.peer,
+                    ended = observed.prog_mode_ended,
+                    railcom = ?observed.railcom,
+                    "z21 observe deadline"
+                );
+                return Ok(observed);
+            }
+            let recv = timeout(remaining, self.sock.recv(&mut buf));
+            let n = match cancel {
+                Some(token) => tokio::select! {
+                    () = token.cancelled() => {
+                        self.drain();
+                        return Err(CvError::Cancelled);
+                    }
+                    got = recv => match got {
+                        Ok(Ok(n)) => n,
+                        Ok(Err(err)) => return Err(err.into()),
+                        Err(_) => return Ok(observed),
+                    },
+                },
+                None => match recv.await {
+                    Ok(Ok(n)) => n,
+                    Ok(Err(err)) => return Err(err.into()),
+                    Err(_) => return Ok(observed),
+                },
+            };
+            tracing::debug!(
+                peer = %self.peer,
+                n,
+                preview = %hex_preview(&buf[..n]),
+                "z21 observe rx"
+            );
+            ingest(&buf[..n], &mut observed);
+            if observed.prog_mode_ended {
+                tracing::debug!(
+                    peer = %self.peer,
+                    railcom = ?observed.railcom,
+                    central_state = ?observed.central_state,
+                    prog_current_ma = ?observed.prog_current_ma,
+                    "z21 programming mode ended"
+                );
+                return Ok(observed);
+            }
+        }
+    }
+
+    /// Send `cmd` and await its reply, retrying **once** on timeout.
+    ///
+    /// The single retry is a reliability policy for noisy Z21 LAN links. It is
+    /// safe because `await_result` calls `drain()` on timeout, so a late reply
+    /// to the first attempt is discarded before the second send. The retry
+    /// does not apply to NACK / short-circuit (those are decoder verdicts).
     async fn read_once_or_retry(
         &self,
         cmd: &z21::Command,
@@ -141,7 +230,13 @@ impl Z21Client {
         let mut codec = z21::Client::new();
         let mut pkt = z21::WireBuf::new();
         codec.on_connect(&mut pkt).map_err(map_encode)?;
-        tracing::debug!(peer = %self.peer, len = pkt.len(), "z21 hello tx (serial + broadcast flags)");
+        z21::encode_broadcast_flags(&mut pkt, BROADCAST_FLAGS).map_err(map_encode)?;
+        tracing::debug!(
+            peer = %self.peer,
+            len = pkt.len(),
+            flags = BROADCAST_FLAGS,
+            "z21 hello tx (serial + broadcast flags)"
+        );
         self.sock.send(pkt.as_slice()).await?;
         let deadline = Instant::now() + HELLO_TIMEOUT;
         let mut buf = [0u8; 1500];
@@ -300,6 +395,32 @@ fn hex_preview(buf: &[u8]) -> String {
     out
 }
 
+fn ingest(buf: &[u8], out: &mut Observed) {
+    let mut codec = z21::Client::new();
+    codec.on_bytes(buf, &mut |ev| ingest_event(ev, out));
+}
+
+fn ingest_event(ev: z21::Event, out: &mut Observed) {
+    match ev {
+        z21::Event::SystemState(state) => {
+            out.prog_current_ma = Some(state.prog_current_ma);
+            out.central_state = Some(state.central_state);
+            if state.prog_mode_ended {
+                out.prog_mode_ended = true;
+            }
+        }
+        z21::Event::RailComLoco(addr) => {
+            if !out.railcom.contains(&addr) && out.railcom.push(addr).is_ok() {
+                tracing::debug!(addr, "z21 railcom loco");
+            }
+        }
+        z21::Event::TrackPowerOn => {
+            out.prog_mode_ended = true;
+        }
+        _ => {}
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -310,5 +431,93 @@ mod tests {
         z21::Client::new().on_connect(&mut out).unwrap();
         assert!(out.len() >= 4);
         assert_eq!(&out[..4], &[0x04, 0x00, 0x10, 0x00]);
+    }
+
+    #[test]
+    fn broadcast_flags_are_little_endian_00050101() {
+        let mut out = z21::WireBuf::new();
+        z21::encode_broadcast_flags(&mut out, BROADCAST_FLAGS).unwrap();
+        assert_eq!(&out[2..4], &[0x50, 0x00]);
+        assert_eq!(&out[4..8], &[0x01, 0x01, 0x05, 0x00]);
+    }
+
+    #[test]
+    fn ingest_track_power_on_ends_programming() {
+        let mut got = Observed::default();
+        ingest(&[0x07, 0x00, 0x40, 0x00, 0x61, 0x01, 0x60], &mut got);
+        assert!(got.prog_mode_ended);
+    }
+
+    #[test]
+    fn ingest_programming_mode_does_not_end() {
+        let mut got = Observed::default();
+        ingest(&[0x07, 0x00, 0x40, 0x00, 0x61, 0x02, 0x63], &mut got);
+        assert!(!got.prog_mode_ended);
+    }
+
+    #[test]
+    fn ingest_railcom_loco_address() {
+        let mut pkt = [0u8; 17];
+        pkt[0] = 0x11;
+        pkt[2] = 0x88;
+        pkt[4] = 13;
+        pkt[5] = 0;
+        let mut got = Observed::default();
+        ingest(&pkt, &mut got);
+        assert_eq!(got.railcom.as_slice(), &[13]);
+    }
+
+    #[test]
+    fn ingest_systemstate_prog_current_and_central_state() {
+        let mut pkt = [0u8; 20];
+        pkt[0] = 0x14;
+        pkt[2] = 0x84;
+        pkt[6] = 42;
+        pkt[7] = 0;
+        pkt[16] = 0x00;
+        let mut got = Observed::default();
+        ingest(&pkt, &mut got);
+        assert_eq!(got.prog_current_ma, Some(42));
+        assert_eq!(got.central_state, Some(0));
+        assert!(got.prog_mode_ended);
+    }
+
+    #[test]
+    fn ingest_concatenated_records() {
+        let mut railcom = [0u8; 17];
+        railcom[0] = 0x11;
+        railcom[2] = 0x88;
+        railcom[4] = 13;
+        let mut sys = [0u8; 20];
+        sys[0] = 0x14;
+        sys[2] = 0x84;
+        sys[6] = 7;
+        sys[16] = z21::CS_PROGRAMMING_MODE;
+        let power_on = [0x07, 0x00, 0x40, 0x00, 0x61, 0x01, 0x60];
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&railcom);
+        buf.extend_from_slice(&sys);
+        buf.extend_from_slice(&power_on);
+        let mut got = Observed::default();
+        ingest(&buf, &mut got);
+        assert_eq!(got.railcom.as_slice(), &[13]);
+        assert_eq!(got.prog_current_ma, Some(7));
+        assert_eq!(got.central_state, Some(z21::CS_PROGRAMMING_MODE));
+        assert!(got.prog_mode_ended);
+    }
+
+    #[test]
+    fn ingest_railcom_caps_unique_addresses() {
+        let mut got = Observed::default();
+        for i in 1u16..=12 {
+            let mut pkt = [0u8; 17];
+            pkt[0] = 0x11;
+            pkt[2] = 0x88;
+            pkt[4] = i as u8;
+            pkt[5] = (i >> 8) as u8;
+            ingest(&pkt, &mut got);
+        }
+        assert_eq!(got.railcom.len(), z21::RAILCOM_ADDRS_MAX);
+        assert_eq!(got.railcom.as_slice(), &[1, 2, 3, 4, 5, 6, 7, 8]);
     }
 }

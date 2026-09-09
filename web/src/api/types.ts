@@ -1,4 +1,5 @@
 export type IntegrationMode = "bigfred" | "standalone";
+export type ProgrammingMode = "bigfred" | "z21";
 
 export interface Z21Public {
   hostname: string;
@@ -8,6 +9,7 @@ export interface Z21Public {
 export interface PublicConfig {
   enabled: boolean;
   mode: IntegrationMode;
+  programmingMode: ProgrammingMode;
   ssoClientId: string;
   redirectUris: string[];
   idleTimeoutSecs: number;

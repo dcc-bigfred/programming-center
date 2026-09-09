@@ -127,7 +127,7 @@ export default function AppShell({ title, children }: Props) {
 
   const selectedStation = stations?.find((s) => String(s.id) === query.station);
   const status =
-    config?.mode === "standalone" && config.z21
+    config?.programmingMode === "z21" && config.z21
       ? t("app.statusZ21", { host: config.z21.hostname, port: config.z21.port })
       : selectedStation
         ? t("app.statusStation", { name: selectedStation.name })

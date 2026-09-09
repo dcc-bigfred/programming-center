@@ -17,6 +17,7 @@ pub const BUILTIN_REDIRECT_URIS: &[&str] = &[
     "http://localhost:8092/auth/callback",
 ];
 
+/// SSO / BigFred integration. Independent of [`ProgrammingMode`].
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum IntegrationMode {
@@ -33,6 +34,30 @@ impl IntegrationMode {
 
     #[must_use]
     pub fn is_bigfred(self) -> bool {
+        matches!(self, Self::Bigfred)
+    }
+}
+
+/// CV transport. Independent of [`IntegrationMode`].
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum ProgrammingMode {
+    /// BigFred dcc-bus (default).
+    #[default]
+    Bigfred,
+    /// Direct UDP to a Z21 / RailBOX.
+    #[serde(rename = "z21")]
+    Z21,
+}
+
+impl ProgrammingMode {
+    #[must_use]
+    pub fn is_z21(self) -> bool {
+        matches!(self, Self::Z21)
+    }
+
+    #[must_use]
+    pub fn is_dcc_bus(self) -> bool {
         matches!(self, Self::Bigfred)
     }
 }
@@ -91,7 +116,10 @@ impl Z21Section {
 pub struct Config {
     pub http: String,
     pub enabled: bool,
+    /// SSO: BigFred login vs none.
     pub mode: IntegrationMode,
+    /// CV transport: dcc-bus vs Z21 UDP.
+    pub programming_mode: ProgrammingMode,
     pub bigfred: BigfredSection,
     pub z21: Z21Section,
     pub sso_client_id: String,
@@ -111,6 +139,7 @@ impl Default for Config {
             http: format!("0.0.0.0:{DEFAULT_PORT}"),
             enabled: false,
             mode: IntegrationMode::Bigfred,
+            programming_mode: ProgrammingMode::Bigfred,
             bigfred: BigfredSection::default(),
             z21: Z21Section::default(),
             sso_client_id: "programming-center".into(),
@@ -237,6 +266,7 @@ impl Config {
         PublicConfig {
             enabled: self.enabled,
             mode: self.mode,
+            programming_mode: self.programming_mode,
             sso_client_id: self.sso_client_id.clone(),
             redirect_uris: self.redirect_uris.clone(),
             idle_timeout_secs: self.idle_timeout_secs,
@@ -247,7 +277,7 @@ impl Config {
             } else {
                 None
             },
-            z21: if self.mode.is_standalone() {
+            z21: if self.programming_mode.is_z21() {
                 Some(Z21Public {
                     hostname: self.z21.hostname.trim().to_string(),
                     port: self.z21.port,
@@ -303,6 +333,7 @@ pub struct Z21Public {
 pub struct PublicConfig {
     pub enabled: bool,
     pub mode: IntegrationMode,
+    pub programming_mode: ProgrammingMode,
     pub sso_client_id: String,
     pub redirect_uris: Vec<String>,
     pub idle_timeout_secs: u64,
@@ -332,6 +363,7 @@ mod tests {
     fn default_is_bigfred_at_local() {
         let cfg = Config::default();
         assert_eq!(cfg.mode, IntegrationMode::Bigfred);
+        assert_eq!(cfg.programming_mode, ProgrammingMode::Bigfred);
         assert_eq!(cfg.bigfred.address, "bigfred.local:8080");
         assert_eq!(cfg.z21.hostname, "192.168.4.1");
         assert_eq!(cfg.z21.port, 21150);
@@ -357,6 +389,39 @@ mod tests {
         assert!(!p.station_picker);
         assert!(!p.login_required);
         assert!(p.bigfred_public_url.is_none());
+        assert_eq!(p.programming_mode, ProgrammingMode::Bigfred);
+        assert!(p.z21.is_none());
+    }
+
+    #[test]
+    fn programming_mode_defaults_to_dcc_bus() {
+        let raw = r#"{"mode":"standalone"}"#;
+        let cfg: Config = serde_json::from_str(raw).unwrap();
+        assert_eq!(cfg.mode, IntegrationMode::Standalone);
+        assert_eq!(cfg.programming_mode, ProgrammingMode::Bigfred);
+        assert!(cfg.public().z21.is_none());
+    }
+
+    #[test]
+    fn programming_mode_json_round_trip() {
+        let raw = r#"{"http":"0.0.0.0:8092","enabled":true,"mode":"bigfred","programmingMode":"z21","bigfred":{"address":"bigfred.local:8080"},"z21":{"hostname":"192.168.4.1","port":21150},"ssoClientId":"programming-center","redirectUris":[],"corsEnabled":false,"corsOrigins":[],"idleTimeoutSecs":86400,"devRedirectUris":false}"#;
+        let cfg: Config = serde_json::from_str(raw).unwrap();
+        assert_eq!(cfg.mode, IntegrationMode::Bigfred);
+        assert_eq!(cfg.programming_mode, ProgrammingMode::Z21);
+        assert_eq!(cfg.public().z21.as_ref().map(|z| z.port), Some(21150));
+    }
+
+    #[test]
+    fn public_exposes_z21_when_programming_via_z21() {
+        let cfg = Config {
+            mode: IntegrationMode::Bigfred,
+            programming_mode: ProgrammingMode::Z21,
+            ..Config::default()
+        };
+        let p = cfg.public();
+        assert!(p.station_picker);
+        assert!(p.login_required);
+        assert_eq!(p.programming_mode, ProgrammingMode::Z21);
         assert_eq!(p.z21.as_ref().map(|z| z.port), Some(21150));
     }
 
@@ -369,6 +434,8 @@ mod tests {
         );
         assert!(p.station_picker);
         assert!(p.login_required);
+        assert_eq!(p.programming_mode, ProgrammingMode::Bigfred);
+        assert!(p.z21.is_none());
     }
 
     #[test]

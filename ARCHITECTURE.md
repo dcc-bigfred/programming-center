@@ -31,17 +31,21 @@ org-wide Rust standard).
    `host:port` (default `bigfred.local:8080`); the daemon prefixes
    `http://` / `ws://`. On the hub that is local; a laptop sets
    `127.0.0.1:8080`.
-3. **`mode` is integration, not the programming track.** JSON
-   `mode: bigfred | standalone` selects the whole BigFred stack vs none.
+3. **`mode` is SSO, `programmingMode` is the CV bus.** JSON
+   `mode: bigfred | standalone` selects BigFred sign-in / proxy / station
+   picker vs none. JSON `programmingMode: bigfred | z21` selects dcc-bus
+   vs direct Z21 UDP. The two are independent: BigFred login can sit in
+   front of a Z21. Default `programmingMode` is `bigfred` (dcc-bus).
    The programming track lives in the URL as `track=prog|pom` so it does
    not collide with wizard’s `mode: prog|pom` on dcc-bus.
-4. **`standalone` means zero BigFred.** No SSO, no HTTP proxy, no
-   command-station catalogue. Stronger than wizard’s
+4. **`standalone` means zero BigFred SSO.** No login, no HTTP proxy, no
+   command-station catalogue. It does **not** force Z21 — set
+   `programmingMode: z21` for that. Stronger than wizard’s
    `locoProgramming.mode: direct`, which still signs in through BigFred.
 5. **Hot-reload JSON, cold-bind HTTP.** Config is watched (inotify,
    300 ms debounce). Invalid JSON keeps the previous snapshot. Changes
-   to `http` / CORS need a process restart. `mode` and `z21.*` take
-   effect on the next WebSocket command (`Hub::select`).
+   to `http` / CORS need a process restart. `mode`, `programmingMode`,
+   and `z21.*` take effect on the next WebSocket command (`Hub::adapter`).
 6. **`enabled: false` until an operator turns it on.** Fresh images do
    not expose the kiosk.
 7. **JWT is a layout session, not RBAC here.** Permissions stay in
@@ -56,7 +60,7 @@ org-wide Rust standard).
 10. **musl arm64 + amd64.** Allocation-conscious tokio/HTTP daemon
     (CODING-GUIDELINES §2), not firmware-heapless.
 11. **One programming session.** The browser holds one WebSocket to
-    programming-center (`cv.read` / `cv.write` / `cv.bitop`).
+    programming-center (`cv.read` / `cv.write` / `cv.bitop` / `address.set`).
 
 ---
 
@@ -74,7 +78,7 @@ Review filter — not a restatement of CODING-GUIDELINES.
   is a frontend module (`zimoMapping.ts` / `esuMapping.ts`); other brands add their own
   page behind `MappingPage`.
 - **Closed set, enum dispatch on the CV path.**
-  `ProgrammingBus = DccBus | Z21`. `Hub::select(&live.mode)` — not
+  `ProgrammingBus = DccBus | Z21`. `Hub::adapter(&live.programming_mode)` — not
   `Box<dyn>` on the hot path (guidelines §8.2). The SPA feeds one
   `CvListPage` from `CvItem[]`.
 - **Direct CV ops.** Features compute on the frontend and call raw
@@ -82,7 +86,8 @@ Review filter — not a restatement of CODING-GUIDELINES.
   `volumeMap.ts`; Apply writes the mapped master CV. Mapping bits live in
   `zimoMapping.ts` / `esuMapping.ts`; Apply writes staged CVs (ZIMO via
   Zmiany; ESU indexed mapping via a page-local Apply that sets CV 31/32
-  first).
+  first). DCC address is `address.set` (backend, ESU service-mode
+  sequence); the address form Apply does not go through CvRegistry.
 - **Adapter.** dcc-bus frames and Z21 UDP hide behind `ProgrammingBus`.
 - **Errors.** Envelope `{error, detail}`. Forward BigFred / Z21 codes.
   The SPA i18n-looks-up the code; a missing translation shows the
@@ -102,7 +107,7 @@ flowchart TB
         Axum["Axum"]
         Live["Live Config JSON"]
         WsHub["ProgrammingWs"]
-        Hub["Hub.select"]
+        Hub["Hub.adapter"]
         DccImpl["DccBusProgrammer"]
         Z21Impl["Z21Programmer"]
         Proxy["HTTP proxy /api/v1/*"]
@@ -121,8 +126,8 @@ flowchart TB
     SPA -->|"WS programming"| WsHub
     Proxy -->|"only mode bigfred"| BF
     Oauth -->|"only mode bigfred"| BF
-    DccImpl -->|"loco.cvRead/cvWrite"| BF
-    Z21Impl -->|"LAN_X CV / POM"| Z21
+    DccImpl -->|"programmingMode bigfred"| BF
+    Z21Impl -->|"programmingMode z21"| Z21
 ```
 
 Boot in `crates/programming-center/src/main.rs`: load/seed config,
@@ -151,7 +156,7 @@ programming-center/
 
 Dependencies: `bigfred-shared-daemon` (config + datadir, no Unix IPC),
 `bigfred-client` (path to the sibling `dcc-bigfred/bigfred` tree),
-`dcc-bigfred-proto-z21`, Diesel 2 + bundled SQLite.
+`dcc-bigfred-proto-z21` (path to sibling `proto`, CI pins `go/v0.1.1`), Diesel 2 + bundled SQLite.
 
 Memory profile of the daemon: **allocation-conscious**.
 
@@ -170,15 +175,15 @@ is seeded **only** when `mode == bigfred` (including a reload into that
 mode). That file is BigFred’s, not ours.
 
 `GET /api/v1/pc/config` returns `PublicConfig` (no secrets): `enabled`,
-`mode`, `ssoClientId`, `redirectUris`, `idleTimeoutSecs`,
-`stationPicker`, `loginRequired`, `bigfredPublicUrl` (bigfred only),
-`z21` (standalone only). The SPA polls about every 15 s and hides SSO
+`mode`, `programmingMode`, `ssoClientId`, `redirectUris`, `idleTimeoutSecs`,
+`stationPicker`, `loginRequired`, `bigfredPublicUrl` (SSO bigfred only),
+`z21` (`programmingMode` z21 only). The SPA polls about every 15 s and hides SSO
 as soon as `mode` becomes `standalone`.
 
 Default seed: `enabled: false`, `mode: bigfred`,
-`bigfred.address: bigfred.local:8080`, `z21.hostname: 192.168.4.1`,
-`z21.port: 21150`. `z21` is read only in standalone; missing hostname or
-port → `z21_not_configured`.
+`programmingMode: bigfred` (dcc-bus), `bigfred.address: bigfred.local:8080`,
+`z21.hostname: 192.168.4.1`, `z21.port: 21150`. `z21` is used when
+`programmingMode` is `z21`; missing hostname or port → `z21_not_configured`.
 
 SQLite (Diesel 2): `$DATA_DIR/var/lib/bigfred/programming-center/db.sqlite3`.
 Created on first start. `embed_migrations!` runs pending Diesel migrations
@@ -239,7 +244,7 @@ Unit tests: Vitest + Testing Library (`cd web && npm test`; `make test-web`).
 | `/` | `station`, `decoder` | overview; decoder tiles (plus Detect via CV 8) and the left-nav picker. Choosing a decoder (tile, Detect, or Navigator) reads CV 1/17/18/29 on the programming track and fills query `address` only when the session address is `0` |
 | `/cv` | `station`, `decoder`, `address`, `track`, `cv` | Direct CV accordion (stages into CvRegistry) |
 | `/speed` | same without `cv` | NMRA sliders, ZIMO drag charts, or LokSound v5 ESU charts; stages CVs. ZIMO and LokSound v5 `ensureRead` speed CVs on entry only when they are missing from the registry (prog/POM is transport, not a cache key). **Odczytaj** force-reads. |
-| `/address` | same without `cv` | DCC address (CV 1 / 17 / 18 / 29); stages, does not change query `address` until Apply |
+| `/address` | same without `cv` | DCC address. Read and Apply call the backend (`cv.read` / `address.set`) on the programming track; does not stage into CvRegistry. Read also fetches CV 28 (RailComPlus). Query `address` updates after a successful read or Apply. |
 | `/volume` | same without `cv` | Volume 0–100 stages the mapped master CV (`volumeMap` + `cv.read`) |
 | `/mapping` | same without `cv` | Output mapping. ZIMO MS/MN (`zimoMapping` + `CvRegistry`). ESU LokSound v4/v5 (`esuMapping` + indexed table keyed `16.{cv32}.{cv}`; page-local Apply writes CV 31, CV 32, then payload). Mapping groups / output-config tab read on demand — no full 1440-CV dump on entry. |
 | `/backup` | `station`, `address`, `track` (no decoder required) | Dump / restore CVs; does not use CvRegistry |
@@ -256,9 +261,10 @@ CV table (`Record<cv, value>`) in `CvRegistry` (`sessionStorage` key
 Changing that scope loads a different table so two locomotives are not
 mixed. Programming-track vs POM (`track` in the query) does not change
 the table — it only goes on the next `cv.read` / `cv.write`. A field or
-wizard change (slider, chart drag, address, volume, ZIMO mapping)
+wizard change (slider, chart drag, volume, ZIMO mapping)
 writes into the table; a locomotive **read** fills both the table and the
-baseline, so it is not a pending change. The left-nav **Zmiany** list is
+baseline, so it is not a pending change. Address is not staged: **Ustaw
+adres** Apply sends `address.set` immediately. The left-nav **Zmiany** list is
 `table` minus `baseline`. **Zaaplikuj** sends one `cv.write` of those diffs.
 ESU function mapping uses a second table for indexed CVs 257–511 (they
 repeat on every CV 32 page). Those diffs are **not** in Zmiany; the
@@ -269,8 +275,9 @@ zmian** expands saved names; an arrow (or “Wczytaj do obecnych zmian”)
 merges those CVs into the session table (`setMany`). **Zastąp obecnymi
 zmianami** overwrites the saved snapshot (PATCH). Volume Apply writes the mapped
 master CV from `volumeMap.ts`.
-If Apply wrote CV 1 / 17 / 18, the programming-target `address` query is
-updated so POM follows the new DCC address. Selecting a decoder (home
+If Apply wrote CV 1 / 17 / 18, or `address.set` succeeded, the
+programming-target `address` query is updated so POM follows the new DCC
+address. Selecting a decoder (home
 tiles, Detect, or the Navigator) reads those CVs on the programming track
 and fills `address` only when the session address is `0`.
 
@@ -324,6 +331,7 @@ Envelope `{ type, id, payload }`. Ack `{ ok, error, detail, cvs, errors }`.
 | `cv.write` | Direct write |
 | `cv.write.cancel` | Stop the in-flight write (`id` of that `cv.write`). |
 | `cv.bitop` | RMW: `new = (old & andMask) \| orMask` |
+| `address.set` | ESU service-mode address: optional CV 28 bit 7 (RailComPlus), then CV 1 + clear CV 29 bit 5 (short) or CV 17 → 18 → set bit 5 (long). Always `prog`. After the write, wait until the Z21 leaves programming mode (`61 01` / system state) and re-read CV 1/17/18/29. Mismatch → `address_reverted` with the actual CVs. Payload `{ stationId?, address, newAddress, longBit?, railcomPlus? }`. Cancel with `cv.write.cancel`. |
 | `auth` | First frame: `{ token }`. Never put the token in the URL. |
 
 Dump/restore of many CVs: the daemon probes CV 1 first, then chunks
@@ -338,8 +346,8 @@ New command = new file + match arm in `ws.rs`.
 
 ## 10. CV Hub
 
-`Hub::read_cvs` / `write_cvs` take live `mode` per command. Standalone
-→ `Z21Programmer`; bigfred → `DccBusProgrammer` (`request_to` with
+`Hub::read_cvs` / `write_cvs` take live `programmingMode` per command. Z21
+→ `Z21Programmer`; dcc-bus (`bigfred`) → `DccBusProgrammer` (`request_to` with
 explicit `station_id`). Changing `z21.hostname` / `port` on reload
 drops the UDP socket (`Hub::drop_z21`) so the next command reconnects.
 Both adapters return successful slots plus `errors` (CV numbers that
