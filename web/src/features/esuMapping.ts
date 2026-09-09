@@ -9,6 +9,7 @@ export const INDEX_CV31_VALUE = 16;
 export const INDEXED_CV_START = 257;
 export const ROW_STRIDE = 16;
 export const ROWS_PER_PAGE = 16;
+export const SCENE_GROUP_SIZE = 5;
 
 export type CondState = "ignore" | "on" | "off";
 
@@ -356,8 +357,8 @@ export function rowLayout(profile: EsuMappingProfile, row: number): RowLayout {
 
 export function rowGroups(profile: EsuMappingProfile): RowGroup[] {
   const groups: RowGroup[] = [];
-  for (let first = 1; first <= profile.rowCount; first += ROWS_PER_PAGE) {
-    const last = Math.min(first + ROWS_PER_PAGE - 1, profile.rowCount);
+  for (let first = 1; first <= profile.rowCount; first += SCENE_GROUP_SIZE) {
+    const last = Math.min(first + SCENE_GROUP_SIZE - 1, profile.rowCount);
     const byPage = new Map<number, Set<number>>();
     for (let row = first; row <= last; row++) {
       const layout = rowLayout(profile, row);

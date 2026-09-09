@@ -42,13 +42,15 @@ describe("esuMapping", () => {
     expect(layout.outputCvs[layout.outputCvs.length - 1]).toBe(512);
   });
 
-  it("splits v5 groups into condition then output pages", () => {
+  it("splits v5 groups into five scenes, keeping CV32 pages from the row layout", () => {
     const groups = rowGroups(loksoundV5Mapping);
-    expect(groups).toHaveLength(5);
-    expect(groups[0]).toMatchObject({ firstRow: 1, lastRow: 16 });
+    expect(groups).toHaveLength(15);
+    expect(groups[0]).toMatchObject({ firstRow: 1, lastRow: 5 });
     expect(groups[0].pages.map((p) => p.cv32)).toEqual([3, 8]);
-    expect(groups[4]).toMatchObject({ firstRow: 65, lastRow: 72 });
-    expect(groups[4].pages.map((p) => p.cv32)).toEqual([7, 12]);
+    expect(groups[3]).toMatchObject({ firstRow: 16, lastRow: 20 });
+    expect(groups[3].pages.map((p) => p.cv32)).toEqual([3, 4, 8, 9]);
+    expect(groups[14]).toMatchObject({ firstRow: 71, lastRow: 72 });
+    expect(groups[14].pages.map((p) => p.cv32)).toEqual([7, 12]);
   });
 
   it("packs stop/forward/F0 on as CV A = 20 in the manual example (fwd + F0)", () => {

@@ -17,7 +17,7 @@ on the mapping page: each dirty page is one `cv.write` of
 **Zmiany** never see those 257–511 values.
 
 Do not dump the whole table on entry. The kiosk reads the current group
-of 16 mapping rows, or output configuration when that tab is opened.
+of 5 mapping scenes, or output configuration when that tab is opened.
 
 ## Index registers
 

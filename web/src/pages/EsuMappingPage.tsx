@@ -19,7 +19,11 @@ import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Typography from "@mui/material/Typography";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import ElectricalServicesIcon from "@mui/icons-material/ElectricalServices";
+import HighlightIcon from "@mui/icons-material/Highlight";
+import LightModeIcon from "@mui/icons-material/LightMode";
+import TheatersIcon from "@mui/icons-material/Theaters";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
@@ -75,6 +79,13 @@ const chipSx = { minWidth: 56, minHeight: 48 } as const;
 
 type TFn = (key: string, opts?: Record<string, string | number>) => string;
 
+function physicalIcon(id: string): ReactNode {
+  const sx = { fontSize: 28 } as const;
+  if (id === "headlight" || id === "headlight2") return <LightModeIcon sx={sx} />;
+  if (id === "rearlight" || id === "rearlight2") return <HighlightIcon sx={sx} />;
+  return <ElectricalServicesIcon sx={sx} />;
+}
+
 function physicalLabel(t: TFn, id: string): string {
   if (id === "headlight") return t("mapping.esu.out.headlight");
   if (id === "rearlight") return t("mapping.esu.out.rearlight");
@@ -119,6 +130,7 @@ export default function EsuMappingPage({
   const [tab, setTab] = useState(0);
   const [groupIndex, setGroupIndex] = useState(0);
   const [open, setOpen] = useState<Record<number, boolean | undefined>>({});
+  const [openOutput, setOpenOutput] = useState<Record<string, boolean | undefined>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [applyFailed, setApplyFailed] = useState<string[]>([]);
@@ -289,7 +301,7 @@ export default function EsuMappingPage({
               const row = group.firstRow + i;
               const decoded = readRow(profile, row, get) ?? emptyRow(profile);
               const empty = isRowEmpty(decoded);
-              const expanded = open[row] ?? !empty;
+              const expanded = open[row] ?? false;
               return (
                 <Accordion
                   key={row}
@@ -298,11 +310,14 @@ export default function EsuMappingPage({
                   disableGutters
                 >
                   <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ minHeight: 48 }}>
-                    <Typography>
-                      {empty
-                        ? t("mapping.esu.rowEmpty", { n: row })
-                        : t("mapping.esu.rowTitle", { n: row })}
-                    </Typography>
+                    <Stack direction="row" spacing={1.5} alignItems="center">
+                      <TheatersIcon sx={{ fontSize: 28 }} />
+                      <Typography sx={{ fontWeight: 700 }}>
+                        {empty
+                          ? t("mapping.esu.rowEmpty", { n: row })
+                          : t("mapping.esu.rowTitle", { n: row })}
+                      </Typography>
+                    </Stack>
                   </AccordionSummary>
                   <AccordionDetails>
                     <RowEditor t={t} profile={profile} row={decoded} onChange={(next) => patchRow(row, next)} />
@@ -322,17 +337,29 @@ export default function EsuMappingPage({
             {t("mapping.esu.outputsHint")}
           </Typography>
           {pagesLoaded([outputsPage], get) ? (
-            <Stack spacing={2}>
-              {profile.outputConfigs.map((out) => (
-                <OutputEditor
-                  key={out.id}
-                  t={t}
-                  profile={profile}
-                  layout={out}
-                  get={get}
-                  onPatch={(cv, value) => setIndexedCv(indexedKey(0, cv), value)}
-                />
-              ))}
+            <Stack sx={{ gap: "26px" }}>
+              {profile.outputConfigs.map((out) => {
+                const expanded = openOutput[out.id] ?? false;
+                return (
+                  <Accordion
+                    key={out.id}
+                    expanded={expanded}
+                    onChange={(_, next) => setOpenOutput((s) => ({ ...s, [out.id]: next }))}
+                    disableGutters
+                    variant="outlined"
+                  >
+                    <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ minHeight: 48 }}>
+                      <Stack direction="row" spacing={1.5} alignItems="center">
+                        {physicalIcon(out.id)}
+                        <Typography sx={{ fontWeight: 700 }}>{physicalLabel(t, out.id)}</Typography>
+                      </Stack>
+                    </AccordionSummary>
+                    <AccordionDetails>
+                      <OutputEditor t={t} profile={profile} layout={out} get={get} onPatch={(cv, value) => setIndexedCv(indexedKey(0, cv), value)} />
+                    </AccordionDetails>
+                  </Accordion>
+                );
+              })}
             </Stack>
           ) : (
             <Typography color="text.secondary">{t("mapping.esu.notReadYet")}</Typography>
@@ -555,11 +582,7 @@ function OutputEditor({
   const knownMode = profile.modes.some((m) => m.value === mode);
 
   return (
-    <Paper variant="outlined" sx={{ p: 1.5 }}>
-      <Typography variant="subtitle1" sx={{ mb: 1 }}>
-        {physicalLabel(t, layout.id)}
-      </Typography>
-      <Stack spacing={1.5}>
+    <Stack spacing={1.5}>
         <FormControl size="small" sx={{ minWidth: 240 }}>
           <InputLabel>{t("mapping.esu.modeLabel")}</InputLabel>
           <Select
@@ -692,6 +715,5 @@ function OutputEditor({
           </Box>
         ) : null}
       </Stack>
-    </Paper>
   );
 }
