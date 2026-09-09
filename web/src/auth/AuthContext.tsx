@@ -13,6 +13,7 @@ import { useNavigate } from "react-router-dom";
 import { ApiError, api, getExpiresAt, getToken, setToken, STATE_KEY } from "../api/client";
 import { programming } from "../api/ws";
 import { resetCvTable } from "../cv/table";
+import { resetIndexedCvTable } from "../cv/indexedTable";
 import type { Me, PublicConfig } from "../api/types";
 
 interface AuthValue {
@@ -113,6 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(
     (reason: "idle" | "manual" = "manual") => {
       resetCvTable();
+      resetIndexedCvTable();
       sessionStorage.clear();
       setToken(null);
       setTokenState(null);

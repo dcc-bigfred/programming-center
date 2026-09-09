@@ -22,7 +22,8 @@ describe("decoder catalogue", () => {
     expect(getDecoder("nmra")?.features).toEqual(["cv", "speed", "address"]);
     expect(getDecoder("zimo-ms450")?.features).toContain("volume");
     expect(getDecoder("zimo-ms450")?.features).toContain("mapping");
-    expect(getDecoder("loksound-v5")?.features).not.toContain("mapping");
+    expect(getDecoder("loksound-v5")?.features).toContain("mapping");
+    expect(getDecoder("loksound-v4")?.features).toContain("mapping");
     expect(getDecoder("loksound-v5")?.longAddressBit ?? 5).toBe(5);
     expect(getDecoder("rb23xx")?.longAddressBit).toBe(3);
   });

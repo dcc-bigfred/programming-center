@@ -19,6 +19,7 @@ import { api } from "../api/client";
 import type { CatalogueVehicle } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { useCvRegistry } from "../cv/CvRegistry";
+import { indexedCvDiffs } from "../cv/indexedTable";
 import { filterLocos, locoPrimaryLabel, selectableLocos } from "../features/pickLoco";
 import { withQuery } from "../query";
 import { useConfirm } from "./ConfirmDialog";
@@ -76,7 +77,7 @@ export default function PickLocoButton() {
 
   const pick = async (v: CatalogueVehicle) => {
     if (v.dccAddress == null) return;
-    if (diffs.length > 0) {
+    if (diffs.length > 0 || indexedCvDiffs().length > 0) {
       const ok = await confirm({
         title: t("changes.confirmDiscardTitle"),
         body: t("changes.confirmDiscardBody"),

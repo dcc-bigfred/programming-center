@@ -71,7 +71,7 @@ Review filter — not a restatement of CODING-GUIDELINES.
   `FeatureModule` in `web/src/features/registry.ts` (left navigator).
   A new WS command is a new file + match arm. A new volume mapping is an
   entry in `web/src/features/volumeMap.ts`. Output mapping encode/decode
-  is a frontend module (`zimoMapping.ts`); other brands add their own
+  is a frontend module (`zimoMapping.ts` / `esuMapping.ts`); other brands add their own
   page behind `MappingPage`.
 - **Closed set, enum dispatch on the CV path.**
   `ProgrammingBus = DccBus | Z21`. `Hub::select(&live.mode)` — not
@@ -80,7 +80,9 @@ Review filter — not a restatement of CODING-GUIDELINES.
 - **Direct CV ops.** Features compute on the frontend and call raw
   `cv.read` / `cv.write` / `cv.bitop`. Volume percent 0–100 lives in
   `volumeMap.ts`; Apply writes the mapped master CV. Mapping bits live in
-  `zimoMapping.ts`; Apply writes the staged CVs.
+  `zimoMapping.ts` / `esuMapping.ts`; Apply writes staged CVs (ZIMO via
+  Zmiany; ESU indexed mapping via a page-local Apply that sets CV 31/32
+  first).
 - **Adapter.** dcc-bus frames and Z21 UDP hide behind `ProgrammingBus`.
 - **Errors.** Envelope `{error, detail}`. Forward BigFred / Z21 codes.
   The SPA i18n-looks-up the code; a missing translation shows the
@@ -137,7 +139,7 @@ programming-center/
 ├── Makefile
 ├── README.md
 ├── docs/speed/                # ZIMO / ESU speed-curve notes (English)
-├── docs/mapping/              # ZIMO output-mapping notes (English)
+├── docs/mapping/              # ZIMO / ESU output-mapping notes (English)
 ├── ARCHITECTURE.md            # this file
 ├── CODING-GUIDELINES.md
 ├── LICENSE                    # Apache-2.0
@@ -239,7 +241,7 @@ Unit tests: Vitest + Testing Library (`cd web && npm test`; `make test-web`).
 | `/speed` | same without `cv` | NMRA sliders, ZIMO drag charts, or LokSound v5 ESU charts; stages CVs. ZIMO and LokSound v5 `ensureRead` speed CVs on entry only when they are missing from the registry (prog/POM is transport, not a cache key). **Odczytaj** force-reads. |
 | `/address` | same without `cv` | DCC address (CV 1 / 17 / 18 / 29); stages, does not change query `address` until Apply |
 | `/volume` | same without `cv` | Volume 0–100 stages the mapped master CV (`volumeMap` + `cv.read`) |
-| `/mapping` | same without `cv` | Output mapping; ZIMO MS/MN only (`zimoMapping` + `cv.read`). `ensureRead` of missing CVs on entry; **Odczytaj** force-reads. |
+| `/mapping` | same without `cv` | Output mapping. ZIMO MS/MN (`zimoMapping` + `CvRegistry`). ESU LokSound v4/v5 (`esuMapping` + indexed table keyed `16.{cv32}.{cv}`; page-local Apply writes CV 31, CV 32, then payload). Mapping groups / output-config tab read on demand — no full 1440-CV dump on entry. |
 | `/backup` | `station`, `address`, `track` (no decoder required) | Dump / restore CVs; does not use CvRegistry |
 
 The shell is a Paperbase-style layout: dark left navigator, blue header,
@@ -254,10 +256,13 @@ CV table (`Record<cv, value>`) in `CvRegistry` (`sessionStorage` key
 Changing that scope loads a different table so two locomotives are not
 mixed. Programming-track vs POM (`track` in the query) does not change
 the table — it only goes on the next `cv.read` / `cv.write`. A field or
-wizard change (slider, chart drag, address, volume, mapping)
+wizard change (slider, chart drag, address, volume, ZIMO mapping)
 writes into the table; a locomotive **read** fills both the table and the
 baseline, so it is not a pending change. The left-nav **Zmiany** list is
 `table` minus `baseline`. **Zaaplikuj** sends one `cv.write` of those diffs.
+ESU function mapping uses a second table for indexed CVs 257–511 (they
+repeat on every CV 32 page). Those diffs are **not** in Zmiany; the
+mapping page Apply writes them per page.
 **Odrzuć** copies baseline over the table. The plus next to **Zmiany**
 saves the current diffs as a named changelist (POST). Left-nav **Lista
 zmian** expands saved names; an arrow (or “Wczytaj do obecnych zmian”)
@@ -368,9 +373,10 @@ master CV via Direct `cv.write`:
 | `loksound-v4` | 63 | 64 |
 | `rb23xx` | 203 | 64 |
 
-Output mapping is ZIMO-only today (`/mapping` → `ZimoMappingPage`). Bits
-are encoded in `web/src/features/zimoMapping.ts`; notes in
-`docs/mapping/zimo.md`.
+Output mapping: ZIMO MS/MN (`/mapping` → `ZimoMappingPage`,
+`web/src/features/zimoMapping.ts`, notes in `docs/mapping/zimo.md`)
+and ESU LokSound v4/v5 (`EsuMappingPage` + `esuMapping.ts`, notes in
+`docs/mapping/esu.md`). ESU indexed CVs are not listed in Direct CV.
 
 ---
 

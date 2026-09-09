@@ -689,13 +689,13 @@ const loksoundV5Cvs: CvItem[] = [
 
 export const loksoundV5: DecoderProfile = {
   id: "loksound-v5",
-  features: ["cv", "speed", "address", "volume"],
+  features: ["cv", "speed", "address", "volume", "mapping"],
   cvs: [...loksoundV5Cvs].sort((a, b) => a.cv - b.cv),
 };
 
 export const loksoundV4: DecoderProfile = {
   id: "loksound-v4",
-  features: ["cv", "speed", "address", "volume"],
+  features: ["cv", "speed", "address", "volume", "mapping"],
   cvs: [
     ...nmraBasic,
     {

@@ -20,6 +20,7 @@ import { useSearchParams } from "react-router-dom";
 
 import type { CommandStation, Track } from "../api/types";
 import { useCvRegistry } from "../cv/CvRegistry";
+import { indexedCvDiffs } from "../cv/indexedTable";
 import { useConfirm } from "./ConfirmDialog";
 import {
   LANGUAGE_FLAG_ICONS,
@@ -78,7 +79,7 @@ export default function Header({
   }, [query.address]);
 
   const guardUnsaved = async (): Promise<boolean> => {
-    if (diffs.length === 0) return true;
+    if (diffs.length === 0 && indexedCvDiffs().length === 0) return true;
     return confirm({
       title: t("changes.confirmDiscardTitle"),
       body: t("changes.confirmDiscardBody"),

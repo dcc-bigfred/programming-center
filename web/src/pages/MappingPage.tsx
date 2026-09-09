@@ -4,8 +4,10 @@ import { useMemo } from "react";
 import AppShell from "../components/AppShell";
 import { useAuth } from "../auth/AuthContext";
 import { getDecoder } from "../decoders/registry";
+import { esuMappingProfile } from "../features/esuMapping";
 import { ZIMO_MAPPING_DECODER_ID } from "../features/zimoMapping";
 import { addressNumber, readQuery, stationNumber } from "../query";
+import EsuMappingPage from "./EsuMappingPage";
 import ZimoMappingPage from "./ZimoMappingPage";
 
 export default function MappingPage() {
@@ -31,6 +33,15 @@ export default function MappingPage() {
     return (
       <AppShell>
         <ZimoMappingPage decoder={decoder} session={session} />
+      </AppShell>
+    );
+  }
+
+  const esu = esuMappingProfile(decoder.id);
+  if (esu) {
+    return (
+      <AppShell>
+        <EsuMappingPage decoder={decoder} profile={esu} session={session} />
       </AppShell>
     );
   }

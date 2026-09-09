@@ -33,6 +33,7 @@ import {
   subscribeCvTable,
   type CvDiff,
 } from "./table";
+import { indexedCvDiffs, subscribeIndexedCvTable, getIndexedCvSnapshot } from "./indexedTable";
 
 interface CvRegistryValue {
   get: (cv: number) => number | undefined;
@@ -58,6 +59,11 @@ export function CvRegistryProvider({ children }: { children: ReactNode }) {
   const [params, setParams] = useSearchParams();
   const query = readQuery(params);
   const snap = useSyncExternalStore(subscribeCvTable, getCvSnapshot, getCvSnapshot);
+  const indexedSnap = useSyncExternalStore(
+    subscribeIndexedCvTable,
+    getIndexedCvSnapshot,
+    getIndexedCvSnapshot,
+  );
   const [applyBusy, setApplyBusy] = useState(false);
   const [applyError, setApplyError] = useState<unknown>(null);
   const [applyFailed, setApplyFailed] = useState<number[]>([]);
@@ -132,15 +138,16 @@ export function CvRegistryProvider({ children }: { children: ReactNode }) {
   }, [ready, config?.enabled, config?.loginRequired, token, query.decoder, query.station]);
 
   const diffs = useMemo(() => cvDiffs(snap), [snap]);
+  const indexedDirty = indexedCvDiffs(indexedSnap).length;
 
   useEffect(() => {
-    if (diffs.length === 0) return;
+    if (diffs.length === 0 && indexedDirty === 0) return;
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
       e.preventDefault();
     };
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [diffs.length]);
+  }, [diffs.length, indexedDirty]);
 
   const apply = useCallback(async () => {
     const pending = cvDiffs();

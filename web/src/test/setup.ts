@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 
 import { resetCvTable } from "../cv/table";
+import { resetIndexedCvTable } from "../cv/indexedTable";
 
 function memoryStorage(): Storage {
   const map = new Map<string, string>();
@@ -35,6 +36,7 @@ if (typeof localStorage === "undefined" || typeof localStorage.clear !== "functi
 
 beforeEach(() => {
   resetCvTable();
+  resetIndexedCvTable();
   sessionStorage?.clear?.();
   localStorage?.clear?.();
 });

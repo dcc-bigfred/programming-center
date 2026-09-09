@@ -16,6 +16,7 @@ import { useTranslation } from "react-i18next";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 
 import { useCvRegistry } from "../cv/CvRegistry";
+import { indexedCvDiffs } from "../cv/indexedTable";
 import { getDecoder, listDecoders } from "../decoders/registry";
 import { decoderLabelKey } from "../decoders/types";
 import { featuresFor, isFeatureEnabled, listFeatures } from "../features/registry";
@@ -61,7 +62,7 @@ export default function Navigator({ showSession = true, onNavigate, ...other }: 
   const changeDecoder = async (value: string) => {
     const next = value || null;
     if ((next ?? "") === (decoder?.id ?? "")) return;
-    if (diffs.length > 0) {
+    if (diffs.length > 0 || indexedCvDiffs().length > 0) {
       const ok = await confirm({
         title: t("changes.confirmDiscardTitle"),
         body: t("changes.confirmDiscardBody"),

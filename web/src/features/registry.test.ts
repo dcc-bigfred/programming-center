@@ -28,5 +28,11 @@ describe("feature modules", () => {
     expect(
       isFeatureEnabled(listFeatures().find((f) => f.id === "mapping")!, getDecoder("zimo-ms450")),
     ).toBe(true);
+    expect(
+      isFeatureEnabled(listFeatures().find((f) => f.id === "mapping")!, getDecoder("loksound-v5")),
+    ).toBe(true);
+    expect(
+      isFeatureEnabled(listFeatures().find((f) => f.id === "mapping")!, getDecoder("loksound-v4")),
+    ).toBe(true);
   });
 });
