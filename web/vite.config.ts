@@ -28,6 +28,14 @@ export default defineConfig({
     outDir: "dist",
     target: "chrome87",
     sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          mui: ["@mui/material", "@mui/icons-material"],
+          vendor: ["react", "react-dom", "react-router-dom", "i18next", "react-i18next"],
+        },
+      },
+    },
   },
   test: {
     globals: true,

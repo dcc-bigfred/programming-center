@@ -35,6 +35,8 @@ vi.mock("../api/ws", () => ({
   programming: {
     cvRead,
     cvWrite,
+    withOverlay: (_opts: unknown, fn: (signal: AbortSignal) => Promise<unknown>) =>
+      fn(new AbortController().signal),
   },
 }));
 
@@ -219,6 +221,22 @@ describe("CvRegistryProvider", () => {
       expect(screen.getByTestId("q-addr")).toHaveTextContent("12");
     });
     expect(getCv(1)).toBe(12);
+  });
+
+  it("keeps failed CVs in the change list after a partial write", async () => {
+    renderRegistry("?decoder=nmra&address=5&track=pom");
+    fireEvent.click(screen.getByText("stage"));
+    await waitFor(() => {
+      expect(screen.getByTestId("diffs")).toHaveTextContent("CV2=40");
+    });
+    cvWrite.mockResolvedValue({ cvs: [], errors: [2] });
+    fireEvent.click(screen.getByText("apply"));
+    await waitFor(() => {
+      expect(cvWrite).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("diffs")).toHaveTextContent("CV2=40");
+    });
   });
 
   it("skips address discovery when the kiosk is disabled", async () => {

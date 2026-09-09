@@ -1,5 +1,6 @@
 //! Direct UDP programming against a Z21 / RailBOX.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -25,9 +26,18 @@ struct InnerReport<'a> {
     total: u32,
 }
 
+#[derive(Clone)]
+struct Session {
+    host: String,
+    port: u16,
+    client: Arc<Z21Client>,
+    generation: u64,
+}
+
 pub struct Z21Programmer {
     cfg: Arc<RwLock<Config>>,
-    inner: Mutex<Option<(String, u16, Z21Client)>>,
+    inner: Mutex<Option<Session>>,
+    generation: AtomicU64,
 }
 
 impl Z21Programmer {
@@ -35,19 +45,24 @@ impl Z21Programmer {
         Self {
             cfg,
             inner: Mutex::new(None),
+            generation: AtomicU64::new(1),
         }
     }
 
     pub fn invalidate(&self) {
-        if let Ok(mut g) = self.inner.try_lock() {
-            *g = None;
-        }
+        self.generation.fetch_add(1, Ordering::Release);
     }
 
-    async fn ensure_inner(
-        &self,
-    ) -> Result<tokio::sync::MutexGuard<'_, Option<(String, u16, Z21Client)>>, ApiError> {
-        let mut guard = self.inner.lock().await;
+    async fn session(&self, cancel: Option<&CancellationToken>) -> Result<Session, ApiError> {
+        let lock = self.inner.lock();
+        let mut guard = if let Some(token) = cancel {
+            tokio::select! {
+                () = token.cancelled() => return Err(ApiError::cancelled()),
+                g = lock => g,
+            }
+        } else {
+            lock.await
+        };
         let cfg = self.cfg.read().await;
         let z21 = cfg.z21.clone();
         drop(cfg);
@@ -57,20 +72,29 @@ impl Z21Programmer {
                 .with_detail("z21.hostname and z21.port are required in standalone mode"));
         }
         let host = z21.hostname.trim().to_string();
+        let gen = self.generation.load(Ordering::Acquire);
         let stale = match guard.as_ref() {
-            Some((h, p, _)) => h != host.as_str() || *p != z21.port,
+            Some(s) => s.host != host || s.port != z21.port || s.generation != gen,
             None => true,
         };
         if stale {
             let addr = z21.socket_addr().map_err(|err| {
                 tracing::warn!(host = %host, port = z21.port, error = %err, "z21 address resolve failed");
-                ApiError::bad_request("invalid_z21_address").with_detail(err)
+                ApiError::bad_request("invalid_z21_address").with_public_detail(err)
             })?;
             tracing::info!(host = %host, port = z21.port, %addr, "z21 opening session");
             let client = Z21Client::connect(addr).await.map_err(map_unreachable)?;
-            *guard = Some((host, z21.port, client));
+            *guard = Some(Session {
+                host,
+                port: z21.port,
+                client: Arc::new(client),
+                generation: gen,
+            });
         }
-        Ok(guard)
+        guard
+            .as_ref()
+            .cloned()
+            .ok_or_else(|| ApiError::unavailable("z21_unreachable"))
     }
 
     /// Read CVs one-by-one, reporting before and after each slot. Stops between
@@ -104,63 +128,74 @@ impl Z21Programmer {
         track: Track,
         report: InnerReport<'_>,
     ) -> Result<CvBatch, ApiError> {
-        let mut guard = self.ensure_inner().await?;
+        let session = self.session(report.cancel).await?;
         let pom = track.is_pom();
         let mut out = CvBatch::default();
         let mut drop_session: Option<ApiError> = None;
-        {
-            let client = match guard.as_ref() {
-                Some((_, _, c)) => c,
-                None => return Err(ApiError::unavailable("z21_unreachable")),
-            };
-            for (i, cv) in cvs.iter().copied().enumerate() {
-                if report.cancel.is_some_and(CancellationToken::is_cancelled) {
-                    return Err(ApiError::cancelled());
-                }
-                if !pc_core::valid_cv(cv) {
-                    return Err(ApiError::bad_request("invalid_cv"));
-                }
-                if i > 0 {
-                    if let Some(token) = report.cancel {
-                        tokio::select! {
-                            () = token.cancelled() => return Err(ApiError::cancelled()),
-                            () = tokio::time::sleep(SETTLE) => {}
-                        }
-                    } else {
-                        tokio::time::sleep(SETTLE).await;
+        let mut timeouts = 0u8;
+        let client = &session.client;
+        for (i, cv) in cvs.iter().copied().enumerate() {
+            if report.cancel.is_some_and(CancellationToken::is_cancelled) {
+                return Err(ApiError::cancelled());
+            }
+            if session.generation != self.generation.load(Ordering::Acquire) {
+                return Err(ApiError::unavailable("z21_session_replaced"));
+            }
+            if !pc_core::valid_cv(cv) {
+                return Err(ApiError::bad_request("invalid_cv"));
+            }
+            if i > 0 {
+                if let Some(token) = report.cancel {
+                    tokio::select! {
+                        () = token.cancelled() => return Err(ApiError::cancelled()),
+                        () = tokio::time::sleep(SETTLE) => {}
                     }
-                }
-                if report.cancel.is_some_and(CancellationToken::is_cancelled) {
-                    return Err(ApiError::cancelled());
-                }
-                let done = report
-                    .done_base
-                    .saturating_add(u32::try_from(i).unwrap_or(u32::MAX));
-                if let Some(tx) = report.progress {
-                    let _ = tx.send(CvProgress::reading(cv, done, report.total)).await;
-                }
-                let result = if pom {
-                    client.read_cv_pom(address, cv).await
                 } else {
-                    client.read_cv(cv).await
-                };
-                let done = report
-                    .done_base
-                    .saturating_add(u32::try_from(i + 1).unwrap_or(u32::MAX));
-                match result {
-                    Ok(value) => {
-                        if let Some(tx) = report.progress {
-                            let _ = tx
-                                .send(CvProgress::got(cv, value, done, report.total))
-                                .await;
-                        }
-                        out.cvs.push(CvEntry { cv, value });
+                    tokio::time::sleep(SETTLE).await;
+                }
+            }
+            if report.cancel.is_some_and(CancellationToken::is_cancelled) {
+                return Err(ApiError::cancelled());
+            }
+            let done = report
+                .done_base
+                .saturating_add(u32::try_from(i).unwrap_or(u32::MAX));
+            if let Some(tx) = report.progress {
+                match tx.try_send(CvProgress::reading(cv, done, report.total)) {
+                    Err(mpsc::error::TrySendError::Closed(_)) => {
+                        return Err(ApiError::cancelled());
                     }
-                    Err(err) => {
-                        if let Some(tx) = report.progress {
-                            let _ = tx.send(CvProgress::failed(cv, done, report.total)).await;
+                    Err(mpsc::error::TrySendError::Full(_)) | Ok(()) => {}
+                }
+            }
+            let result = if pom {
+                client.read_cv_pom(address, cv, report.cancel).await
+            } else {
+                client.read_cv(cv, report.cancel).await
+            };
+            let done = report
+                .done_base
+                .saturating_add(u32::try_from(i + 1).unwrap_or(u32::MAX));
+            match result {
+                Ok(value) => {
+                    timeouts = 0;
+                    if let Some(tx) = report.progress {
+                        match tx.try_send(CvProgress::got(cv, value, done, report.total)) {
+                            Err(mpsc::error::TrySendError::Closed(_)) => {
+                                return Err(ApiError::cancelled());
+                            }
+                            Err(mpsc::error::TrySendError::Full(_)) | Ok(()) => {}
                         }
-                        if let Err(api) = record_cv_err(&mut out, cv, err) {
+                    }
+                    out.cvs.push(CvEntry { cv, value });
+                }
+                Err(err) => {
+                    if let Some(tx) = report.progress {
+                        let _ = tx.try_send(CvProgress::failed(cv, done, report.total));
+                    }
+                    match classify_cv_err(cv, err, &mut timeouts, &mut out) {
+                        Ok(()) => {}
+                        Err(api) => {
                             drop_session = Some(api);
                             break;
                         }
@@ -169,6 +204,7 @@ impl Z21Programmer {
             }
         }
         if let Some(api) = drop_session {
+            let mut guard = self.inner.lock().await;
             *guard = None;
             return Err(api);
         }
@@ -181,12 +217,33 @@ fn map_unreachable(err: CvError) -> ApiError {
     ApiError::unavailable("z21_unreachable").with_detail(err.to_string())
 }
 
-fn record_cv_err(out: &mut CvBatch, cv: u16, err: CvError) -> Result<(), ApiError> {
+fn classify_cv_err(
+    cv: u16,
+    err: CvError,
+    timeouts: &mut u8,
+    out: &mut CvBatch,
+) -> Result<(), ApiError> {
     match err {
-        CvError::Nack | CvError::ShortCircuit | CvError::Timeout(_) => {
+        CvError::Nack => {
+            *timeouts = 0;
             tracing::info!(cv, error = %err, "z21 cv failed");
             out.errors.push(cv);
             Ok(())
+        }
+        CvError::Cancelled => Err(ApiError::cancelled()),
+        CvError::ShortCircuit => {
+            tracing::warn!(cv, "z21 programming-track short — aborting batch");
+            Err(ApiError::unavailable("short_circuit"))
+        }
+        CvError::Timeout(_) => {
+            tracing::info!(cv, error = %err, "z21 cv failed");
+            out.errors.push(cv);
+            *timeouts = timeouts.saturating_add(1);
+            if *timeouts >= 2 {
+                Err(ApiError::unavailable("z21_unreachable"))
+            } else {
+                Ok(())
+            }
         }
         CvError::Io(io) => {
             tracing::error!(cv, error = %io, "z21 udp i/o — dropping session");
@@ -204,6 +261,7 @@ impl ProgrammingBus for Z21Programmer {
         address: u16,
         cvs: &[u16],
         track: Track,
+        cancel: Option<&CancellationToken>,
     ) -> Result<CvBatch, ApiError> {
         let total = u32::try_from(cvs.len()).unwrap_or(u32::MAX);
         self.read_loop(
@@ -211,7 +269,7 @@ impl ProgrammingBus for Z21Programmer {
             cvs,
             track,
             InnerReport {
-                cancel: None,
+                cancel,
                 progress: None,
                 done_base: 0,
                 total,
@@ -227,43 +285,58 @@ impl ProgrammingBus for Z21Programmer {
         address: u16,
         cvs: &[CvEntry],
         track: Track,
+        cancel: Option<&CancellationToken>,
     ) -> Result<CvBatch, ApiError> {
-        let mut guard = self.ensure_inner().await?;
+        let session = self.session(cancel).await?;
         let pom = track.is_pom();
         let mut out = CvBatch::default();
         let mut drop_session: Option<ApiError> = None;
-        {
-            let client = match guard.as_ref() {
-                Some((_, _, c)) => c,
-                None => return Err(ApiError::unavailable("z21_unreachable")),
-            };
-            for (i, entry) in cvs.iter().enumerate() {
-                if !pc_core::valid_cv(entry.cv) {
-                    return Err(ApiError::bad_request("invalid_cv"));
-                }
-                if i > 0 {
+        let mut timeouts = 0u8;
+        let client = &session.client;
+        for (i, entry) in cvs.iter().enumerate() {
+            if cancel.is_some_and(CancellationToken::is_cancelled) {
+                return Err(ApiError::cancelled());
+            }
+            if session.generation != self.generation.load(Ordering::Acquire) {
+                return Err(ApiError::unavailable("z21_session_replaced"));
+            }
+            if !pc_core::valid_cv(entry.cv) {
+                return Err(ApiError::bad_request("invalid_cv"));
+            }
+            if i > 0 {
+                if let Some(token) = cancel {
+                    tokio::select! {
+                        () = token.cancelled() => return Err(ApiError::cancelled()),
+                        () = tokio::time::sleep(SETTLE) => {}
+                    }
+                } else {
                     tokio::time::sleep(SETTLE).await;
                 }
-                let result = if pom {
-                    client
-                        .write_cv_pom(address, entry.cv, entry.value)
-                        .await
-                        .map(|_| entry.value)
-                } else {
-                    client.write_cv(entry.cv, entry.value).await
-                };
-                match result {
-                    Ok(_) => out.cvs.push(*entry),
-                    Err(err) => {
-                        if let Err(api) = record_cv_err(&mut out, entry.cv, err) {
-                            drop_session = Some(api);
-                            break;
-                        }
-                    }
+            }
+            let result = if pom {
+                client
+                    .write_cv_pom(address, entry.cv, entry.value, cancel)
+                    .await
+                    .map(|_| entry.value)
+            } else {
+                client.write_cv(entry.cv, entry.value, cancel).await
+            };
+            match result {
+                Ok(_) => {
+                    timeouts = 0;
+                    out.cvs.push(*entry);
                 }
+                Err(err) => match classify_cv_err(entry.cv, err, &mut timeouts, &mut out) {
+                    Ok(()) => {}
+                    Err(api) => {
+                        drop_session = Some(api);
+                        break;
+                    }
+                },
             }
         }
         if let Some(api) = drop_session {
+            let mut guard = self.inner.lock().await;
             *guard = None;
             return Err(api);
         }

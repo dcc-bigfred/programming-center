@@ -18,8 +18,10 @@ import { useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { CatalogueVehicle } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
+import { useCvRegistry } from "../cv/CvRegistry";
 import { filterLocos, locoPrimaryLabel, selectableLocos } from "../features/pickLoco";
 import { withQuery } from "../query";
+import { useConfirm } from "./ConfirmDialog";
 import ErrorAlert from "./ErrorAlert";
 
 const buttonSx = {
@@ -35,6 +37,8 @@ const buttonSx = {
 export default function PickLocoButton() {
   const { t } = useTranslation();
   const { config, me } = useAuth();
+  const { diffs } = useCvRegistry();
+  const { confirm, dialog } = useConfirm();
   const [params, setParams] = useSearchParams();
   const bigfred = config?.mode === "bigfred";
   const enabled = Boolean(bigfred && me);
@@ -70,8 +74,16 @@ export default function PickLocoButton() {
     };
   }, [open, me]);
 
-  const pick = (v: CatalogueVehicle) => {
+  const pick = async (v: CatalogueVehicle) => {
     if (v.dccAddress == null) return;
+    if (diffs.length > 0) {
+      const ok = await confirm({
+        title: t("changes.confirmDiscardTitle"),
+        body: t("changes.confirmDiscardBody"),
+        danger: true,
+      });
+      if (!ok) return;
+    }
     setParams(withQuery(params, { address: String(v.dccAddress) }));
     setOpen(false);
   };
@@ -125,7 +137,7 @@ export default function PickLocoButton() {
           {!busy && visible.length > 0 ? (
             <List disablePadding>
               {visible.map((v) => (
-                <ListItemButton key={v.id} onClick={() => pick(v)}>
+                <ListItemButton key={v.id} onClick={() => void pick(v)}>
                   <ListItemText
                     primary={locoPrimaryLabel(v)}
                     secondary={
@@ -146,6 +158,7 @@ export default function PickLocoButton() {
           <Button onClick={() => setOpen(false)}>{t("changes.close")}</Button>
         </DialogActions>
       </Dialog>
+      {dialog}
     </>
   );
 }

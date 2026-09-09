@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Navigate, useSearchParams } from "react-router-dom";
 
-import { isCancelled } from "../api/client";
+import { ApiError, isCancelled } from "../api/client";
 import { programming } from "../api/ws";
 import AppShell from "../components/AppShell";
 import ErrorAlert from "../components/ErrorAlert";
@@ -83,7 +83,7 @@ export default function AddressPage() {
   const applyDecoded = (cvs: { cv: number; value: number }[]) => {
     const got = decodeAddressFromCvs(cvs, longBit);
     if (!got || got.address < 1) {
-      throw new Error("empty");
+      throw new ApiError(0, "cv_read_empty");
     }
     setDraft(String(got.address));
     setMode(got.long ? "long" : "short");
@@ -113,10 +113,9 @@ export default function AddressPage() {
           label={t("address.value")}
           inputProps={{ min: 1, max: LONG_MAX }}
           value={draft}
-          onChange={(e) => {
-            const next = e.target.value;
-            setDraft(next);
-            const planned = planWrite(Number(next));
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => {
+            const planned = planWrite(Number(draft));
             if (planned) void stagePlan(planned);
           }}
         />

@@ -9,7 +9,10 @@ use serde_json::json;
 pub struct ApiError {
     pub status: StatusCode,
     pub code: String,
+    /// Server-side only (SQL, paths, upstream). Never sent to the tablet.
     pub detail: Option<String>,
+    /// Safe to show on the LAN kiosk.
+    pub public_detail: Option<String>,
 }
 
 impl ApiError {
@@ -18,11 +21,17 @@ impl ApiError {
             status,
             code: code.into(),
             detail: None,
+            public_detail: None,
         }
     }
 
     pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
         self.detail = Some(detail.into());
+        self
+    }
+
+    pub fn with_public_detail(mut self, detail: impl Into<String>) -> Self {
+        self.public_detail = Some(detail.into());
         self
     }
 
@@ -57,8 +66,11 @@ impl ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
+        if let Some(detail) = &self.detail {
+            tracing::warn!(code = %self.code, %detail, "api error");
+        }
         let mut body = json!({ "error": self.code });
-        if let Some(detail) = self.detail {
+        if let Some(detail) = self.public_detail {
             body["detail"] = json!(detail);
         }
         (self.status, Json(body)).into_response()
@@ -138,7 +150,10 @@ impl From<bigfred_client::Error> for ApiError {
 impl ApiError {
     #[must_use]
     pub fn into_ack(self) -> pc_proto::Ack {
-        pc_proto::Ack::fail(self.code, self.detail)
+        if let Some(detail) = &self.detail {
+            tracing::warn!(code = %self.code, %detail, "ack error");
+        }
+        pc_proto::Ack::fail(self.code, self.public_detail)
     }
 }
 

@@ -44,16 +44,36 @@ function load(scope: string): Snapshot {
   }
 }
 
-function persist(snap: Snapshot): void {
-  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(snap));
-}
-
 let snapshot: Snapshot = empty();
 const listeners = new Set<() => void>();
+let persistTimer: number | null = null;
+
+function persistNow(): void {
+  persistTimer = null;
+  try {
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+  } catch (err) {
+    console.warn("cv table persist failed", err);
+  }
+}
+
+/** Streamed reads write hundreds of values — group sessionStorage writes. */
+function persist(): void {
+  if (persistTimer !== null) return;
+  persistTimer = window.setTimeout(persistNow, 250);
+}
+
+/** Flush pending persist (ack, cancel, unload). */
+export function flushCvTable(): void {
+  if (persistTimer !== null) {
+    window.clearTimeout(persistTimer);
+    persistNow();
+  }
+}
 
 function emit(next: Snapshot): void {
   snapshot = next;
-  persist(next);
+  persist();
   for (const listener of listeners) {
     listener();
   }
@@ -73,6 +93,7 @@ export function getCvSnapshot(): Snapshot {
 export function ensureCvScope(scope: CvScope): void {
   const key = scopeKey(scope);
   if (snapshot.scope === key) return;
+  flushCvTable();
   emit(load(key));
 }
 
@@ -115,6 +136,7 @@ export function setCvBits(cv: number, andMask: number, orMask: number): void {
 
 /** Loco read: fills the table and baseline, so it is not a pending change. */
 export function rememberRead(entries: CvDiff[]): void {
+  if (entries.length === 0) return;
   const table = { ...snapshot.table };
   const baseline = { ...snapshot.baseline };
   for (const e of entries) {
@@ -130,6 +152,10 @@ export function discardCvTable(): void {
 
 /** Drop the in-memory table. Caller clears sessionStorage. */
 export function resetCvTable(): void {
+  if (persistTimer !== null) {
+    window.clearTimeout(persistTimer);
+    persistTimer = null;
+  }
   snapshot = empty();
   for (const listener of listeners) {
     listener();
@@ -159,4 +185,11 @@ export function cvDiffs(snap: Snapshot = snapshot): CvDiff[] {
 
 export function formatCvDiffs(diffs: CvDiff[]): string {
   return diffs.map((d) => `CV${d.cv}=${d.value}`).join("\n");
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeunload", () => flushCvTable());
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") flushCvTable();
+  });
 }

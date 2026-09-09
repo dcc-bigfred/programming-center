@@ -16,7 +16,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Navigate, useSearchParams } from "react-router-dom";
 
-import { isCancelled } from "../api/client";
+import { ApiError, isCancelled } from "../api/client";
 import { programming } from "../api/ws";
 import AppShell from "../components/AppShell";
 import ErrorAlert from "../components/ErrorAlert";
@@ -168,7 +168,7 @@ export default function CvListPage() {
       const { cvs } = await programming.cvRead({ ...session, cvs: [item.cv] });
       const got = cvs.find((c) => c.cv === item.cv)?.value;
       if (got === undefined) {
-        throw new Error("empty");
+        throw new ApiError(0, "cv_read_empty");
       }
       const bits: Record<number, 0 | 1> = {};
       for (const b of item.bits ?? []) {
@@ -207,7 +207,11 @@ export default function CvListPage() {
     const invalid = item.kind !== "bits" && parseDraft(item, draft) === undefined;
     const shown = staged ?? row.value ?? item.default;
     return (
-      <Paper key={item.cv} variant="outlined" sx={{ overflow: "hidden" }}>
+      <Paper
+        key={item.cv}
+        variant="outlined"
+        sx={{ overflow: "hidden", contentVisibility: "auto", containIntrinsicSize: "auto 64px" }}
+      >
         <Box
           role="button"
           tabIndex={0}
@@ -307,7 +311,11 @@ export default function CvListPage() {
           const open = openGroups.has(section.groupKey) || containsOpen;
           const title = optionalT(section.groupKey) ?? "";
           return (
-            <Paper key={section.groupKey} variant="outlined" sx={{ overflow: "hidden" }}>
+            <Paper
+              key={section.groupKey}
+              variant="outlined"
+              sx={{ overflow: "hidden", contentVisibility: "auto", containIntrinsicSize: "auto 64px" }}
+            >
               <Box
                 role="button"
                 tabIndex={0}

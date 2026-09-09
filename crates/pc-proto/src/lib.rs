@@ -57,6 +57,17 @@ impl Ack {
     }
 
     #[must_use]
+    pub fn ok() -> Self {
+        Self {
+            ok: true,
+            error: None,
+            detail: None,
+            cvs: None,
+            errors: None,
+        }
+    }
+
+    #[must_use]
     pub fn fail(code: impl Into<String>, detail: Option<String>) -> Self {
         Self {
             ok: false,
@@ -169,9 +180,11 @@ impl CvProgress {
 
 pub const TYPE_CV_READ: &str = "cv.read";
 pub const TYPE_CV_READ_CANCEL: &str = "cv.read.cancel";
+pub const TYPE_CV_WRITE_CANCEL: &str = "cv.write.cancel";
 pub const TYPE_CV_PROGRESS: &str = "cv.progress";
 pub const TYPE_CV_WRITE: &str = "cv.write";
 pub const TYPE_CV_BITOP: &str = "cv.bitop";
+pub const TYPE_AUTH: &str = "auth";
 pub const TYPE_ACK: &str = "ack";
 
 #[cfg(test)]

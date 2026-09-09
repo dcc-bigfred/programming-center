@@ -33,7 +33,7 @@ use bigfred_shared_daemon::config::{JsonFile, Load, WatchSpec, DEFAULT_DEBOUNCE}
 use bigfred_shared_daemon::DataDir;
 
 use crate::bus::Hub;
-use crate::config::{merge_builtin_redirect_uris, Config};
+use crate::config::{apply_redirect_merges, Config};
 use crate::db::Db;
 
 /// Production SPA bundle. `make web-build` fills this directory.
@@ -110,6 +110,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let bf_cfg = Arc::new(RwLock::new(cfg.read().await.bigfred_view(&data_dir)));
     let http = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
+        .connect_timeout(Duration::from_secs(3))
+        .redirect(reqwest::redirect::Policy::none())
         .build()?;
     let dcc = Arc::new(bigfred_client::DccBusClient::new(
         Arc::clone(&bf_cfg),
@@ -193,7 +195,7 @@ fn spawn_config_reloader(
             let loader = JsonFile::<Config>::new(&config_path);
             match loader.load() {
                 Ok(mut new_cfg) => {
-                    merge_builtin_redirect_uris(&mut new_cfg.redirect_uris);
+                    apply_redirect_merges(&mut new_cfg);
                     if let Some(ref http) = http_override {
                         new_cfg.http = http.clone();
                     }
@@ -268,30 +270,34 @@ fn router(state: AppState, cors_enabled: bool, cors_origins: &[String]) -> Route
             patch(changelists::replace).delete(changelists::delete),
         )
         .fallback(dispatch)
-        .layer(TraceLayer::new_for_http());
+        .layer(TraceLayer::new_for_http().make_span_with(|req: &Request<_>| {
+            tracing::info_span!("http", method = %req.method(), path = %req.uri().path())
+        }));
 
     if cors_enabled && !cors_origins.is_empty() {
         let origins: Vec<HeaderValue> = cors_origins
             .iter()
             .filter_map(|o| HeaderValue::from_str(o).ok())
             .collect();
-        app = app.layer(
-            CorsLayer::new()
-                .allow_origin(AllowOrigin::list(origins))
-                .allow_methods([
-                    Method::GET,
-                    Method::POST,
-                    Method::PUT,
-                    Method::PATCH,
-                    Method::DELETE,
-                    Method::OPTIONS,
-                ])
-                .allow_headers([
-                    header::CONTENT_TYPE,
-                    header::AUTHORIZATION,
-                    header::HeaderName::from_static(bigfred_client::IMPERSONATE_HEADER),
-                ]),
-        );
+        if !origins.is_empty() {
+            app = app.layer(
+                CorsLayer::new()
+                    .allow_origin(AllowOrigin::list(origins))
+                    .allow_methods([
+                        Method::GET,
+                        Method::POST,
+                        Method::PUT,
+                        Method::PATCH,
+                        Method::DELETE,
+                        Method::OPTIONS,
+                    ])
+                    .allow_headers([
+                        header::CONTENT_TYPE,
+                        header::AUTHORIZATION,
+                        header::HeaderName::from_static(bigfred_client::IMPERSONATE_HEADER),
+                    ]),
+            );
+        }
     }
 
     app.with_state(state)
@@ -332,8 +338,10 @@ fn embedded(path: &str) -> Option<Response> {
     let mime = file.metadata.mimetype().to_string();
     let cache = if path == "index.html" {
         "no-cache"
-    } else {
+    } else if path.starts_with("assets/") {
         "public, max-age=31536000, immutable"
+    } else {
+        "public, max-age=3600"
     };
     let mut res = Response::new(Body::from(file.data.into_owned()));
     if let Ok(v) = HeaderValue::from_str(&mime) {

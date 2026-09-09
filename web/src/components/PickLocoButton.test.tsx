@@ -37,6 +37,10 @@ vi.mock("../api/client", () => ({
   api: { vehicleCatalogue },
 }));
 
+vi.mock("../cv/CvRegistry", () => ({
+  useCvRegistry: () => ({ diffs: [] }),
+}));
+
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string, opts?: { address?: number; carrier?: string }) => {

@@ -10,6 +10,7 @@ import type {
 } from "./types";
 
 export const TOKEN_KEY = "programming-center.token";
+export const EXPIRES_KEY = "programming-center.expiresAt";
 export const STATE_KEY = "programming-center.oauthState";
 
 export class ApiError extends Error {
@@ -31,18 +32,27 @@ export function getToken(): string | null {
   return sessionStorage.getItem(TOKEN_KEY);
 }
 
-export function setToken(token: string | null): void {
+export function setToken(token: string | null, expiresAt?: string | null): void {
   if (token) {
     sessionStorage.setItem(TOKEN_KEY, token);
+    if (expiresAt) {
+      sessionStorage.setItem(EXPIRES_KEY, expiresAt);
+    }
   } else {
     sessionStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(EXPIRES_KEY);
   }
+}
+
+export function getExpiresAt(): string | null {
+  return sessionStorage.getItem(EXPIRES_KEY);
 }
 
 interface RequestOptions {
   method?: string;
   body?: unknown;
   auth?: boolean;
+  signal?: AbortSignal;
 }
 
 async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
@@ -57,14 +67,26 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
     }
   }
 
+  const timeout = new AbortController();
+  const timer = window.setTimeout(() => timeout.abort(), 10_000);
+  const onOuter = () => timeout.abort();
+  opts.signal?.addEventListener("abort", onOuter, { once: true });
   const res = await fetch(path, {
     method: opts.method ?? "GET",
     headers,
     body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+    signal: timeout.signal,
   }).catch((err: unknown) => {
+    window.clearTimeout(timer);
+    opts.signal?.removeEventListener("abort", onOuter);
+    if (opts.signal?.aborted) {
+      throw new ApiError(0, "cancelled");
+    }
     const detail = err instanceof Error ? err.message : undefined;
     throw new ApiError(0, "network_error", detail);
   });
+  window.clearTimeout(timer);
+  opts.signal?.removeEventListener("abort", onOuter);
 
   const text = await res.text();
   const payload = text ? safeParse(text) : null;

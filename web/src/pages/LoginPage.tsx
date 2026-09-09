@@ -12,6 +12,7 @@ import { useTranslation } from "react-i18next";
 import { Navigate, useNavigate } from "react-router-dom";
 
 import AppShell from "../components/AppShell";
+import ErrorAlert from "../components/ErrorAlert";
 import { api } from "../api/client";
 import type { LoginLayout } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
@@ -103,11 +104,7 @@ export default function LoginPage() {
           {t("app.idleLogout")}
         </Alert>
       )}
-      {configError && (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          {configError}
-        </Alert>
-      )}
+      {configError ? <ErrorAlert error={configError} /> : null}
       {layoutsError && (
         <Alert severity="error" sx={{ mb: 3 }}>
           {t("login.layoutsError")}
@@ -120,7 +117,7 @@ export default function LoginPage() {
         </Alert>
       )}
 
-      {!ready || layouts === null ? (
+      {!ready || (config?.loginRequired && layouts === null && !configError && !layoutsError) ? (
         <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
           <CircularProgress />
         </Box>

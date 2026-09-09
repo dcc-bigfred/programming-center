@@ -1,5 +1,7 @@
 //! Browser WebSocket: Direct CV read / write / bitop.
 
+use std::future::Future;
+
 use axum::extract::ws::{Message, WebSocket};
 use axum::extract::{Query, State, WebSocketUpgrade};
 use axum::response::IntoResponse;
@@ -11,8 +13,9 @@ use tracing::warn;
 
 use pc_core::{apply_bitop, expand_cv_list, valid_cv, CvBatch, CvEntry, ExpandError};
 use pc_proto::{
-    Ack, CvBitopPayload, CvProgress, CvReadPayload, CvWritePayload, Envelope, TYPE_ACK,
+    Ack, CvBitopPayload, CvProgress, CvReadPayload, CvWritePayload, Envelope, TYPE_ACK, TYPE_AUTH,
     TYPE_CV_BITOP, TYPE_CV_PROGRESS, TYPE_CV_READ, TYPE_CV_READ_CANCEL, TYPE_CV_WRITE,
+    TYPE_CV_WRITE_CANCEL,
 };
 
 use crate::bus::CvReadReport;
@@ -28,6 +31,12 @@ pub struct WsQuery {
     pub token: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct AuthPayload {
+    #[serde(default)]
+    token: Option<String>,
+}
+
 pub async fn ws_upgrade(
     ws: WebSocketUpgrade,
     Query(q): Query<WsQuery>,
@@ -36,7 +45,7 @@ pub async fn ws_upgrade(
     ws.on_upgrade(move |socket| handle_socket(socket, state, q.token))
 }
 
-async fn handle_socket(socket: WebSocket, state: AppState, token: Option<String>) {
+async fn handle_socket(socket: WebSocket, state: AppState, query_token: Option<String>) {
     let (mut sink, mut stream) = socket.split();
     let (tx, mut rx) = mpsc::channel::<Message>(32);
     let writer = tokio::spawn(async move {
@@ -46,6 +55,12 @@ async fn handle_socket(socket: WebSocket, state: AppState, token: Option<String>
             }
         }
     });
+
+    let Some(token) = handshake(&mut stream, &tx, query_token).await else {
+        drop(tx);
+        let _ = writer.await;
+        return;
+    };
 
     'socket: while let Some(Ok(msg)) = stream.next().await {
         let text = match inbound_text(msg, &tx).await {
@@ -60,73 +75,131 @@ async fn handle_socket(socket: WebSocket, state: AppState, token: Option<String>
                 continue;
             }
         };
-        if env.kind == TYPE_CV_READ_CANCEL {
+        if env.kind == TYPE_AUTH {
+            continue;
+        }
+        if env.kind == TYPE_CV_READ_CANCEL || env.kind == TYPE_CV_WRITE_CANCEL {
+            let _ = send_envelope(&tx, TYPE_ACK, env.id.clone(), &Ack::ok()).await;
             continue;
         }
 
-        let cfg = state.config().await;
-        if env.kind == TYPE_CV_READ && cfg.mode.is_standalone() {
-            let cancel = CancellationToken::new();
-            let req_id = env.id.clone();
-            let mut read = std::pin::pin!(cv_read_standalone(
-                &state,
-                token.as_deref(),
-                &env,
-                cancel.clone(),
-                tx.clone(),
-            ));
-            loop {
-                tokio::select! {
-                    ack = &mut read => {
-                        if !send_envelope(&tx, TYPE_ACK, env.id.clone(), &ack).await {
-                            break 'socket;
-                        }
-                        break;
-                    }
-                    incoming = stream.next() => {
-                        match incoming {
-                            None | Some(Err(_)) => {
-                                cancel.cancel();
-                                let ack = read.await;
-                                let _ = send_envelope(&tx, TYPE_ACK, env.id.clone(), &ack).await;
-                                break 'socket;
-                            }
-                            Some(Ok(Message::Close(_))) => {
-                                cancel.cancel();
-                                let _ = read.await;
-                                break 'socket;
-                            }
-                            Some(Ok(Message::Ping(p))) => {
-                                if tx.send(Message::Pong(p)).await.is_err() {
-                                    cancel.cancel();
-                                    let _ = read.await;
-                                    break 'socket;
-                                }
-                            }
-                            Some(Ok(other)) => {
-                                if is_cancel_for(&req_id, &other) {
-                                    cancel.cancel();
-                                } else if let Some(kind) = inbound_kind(&other) {
-                                    warn!(
-                                        kind,
-                                        "ignoring websocket frame during standalone cv.read"
-                                    );
-                                }
-                            }
-                        }
-                    }
+        let cancel = CancellationToken::new();
+        let req_id = env.id.clone();
+        let mut op = std::pin::pin!(dispatch(
+            &state,
+            token.as_deref(),
+            &env,
+            cancel.clone(),
+            tx.clone(),
+        ));
+        match supervise(&mut op, &mut stream, &tx, &req_id, &cancel).await {
+            Supervise::Ack(ack) => {
+                if !send_envelope(&tx, TYPE_ACK, env.id.clone(), &ack).await {
+                    break 'socket;
                 }
             }
-            continue;
-        }
-
-        let ack = dispatch(&state, token.as_deref(), &env).await;
-        if !send_envelope(&tx, TYPE_ACK, env.id.clone(), &ack).await {
-            break;
+            Supervise::Closed => break 'socket,
         }
     }
     drop(tx);
     let _ = writer.await;
+}
+
+enum Supervise {
+    Ack(Ack),
+    Closed,
+}
+
+async fn supervise<F>(
+    op: &mut F,
+    stream: &mut (impl StreamExt<Item = Result<Message, axum::Error>> + Unpin),
+    tx: &mpsc::Sender<Message>,
+    req_id: &Option<String>,
+    cancel: &CancellationToken,
+) -> Supervise
+where
+    F: Future<Output = Ack> + Unpin,
+{
+    loop {
+        tokio::select! {
+            ack = &mut *op => return Supervise::Ack(ack),
+            incoming = stream.next() => {
+                match incoming {
+                    None | Some(Err(_)) | Some(Ok(Message::Close(_))) => {
+                        cancel.cancel();
+                        return Supervise::Closed;
+                    }
+                    Some(Ok(Message::Ping(p))) => {
+                        if tx.send(Message::Pong(p)).await.is_err() {
+                            cancel.cancel();
+                            return Supervise::Closed;
+                        }
+                    }
+                    Some(Ok(other)) => {
+                        if is_cancel_for(req_id, &other) {
+                            cancel.cancel();
+                        } else if let Some((kind, id)) = inbound_envelope(&other) {
+                            if kind == TYPE_AUTH
+                                || kind == TYPE_CV_READ_CANCEL
+                                || kind == TYPE_CV_WRITE_CANCEL
+                            {
+                                continue;
+                            }
+                            warn!(kind, "rejecting frame during in-flight programming op");
+                            let _ = send_envelope(
+                                tx,
+                                TYPE_ACK,
+                                id,
+                                &Ack::fail("busy", Some("programming in progress".into())),
+                            )
+                            .await;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+async fn handshake(
+    stream: &mut (impl StreamExt<Item = Result<Message, axum::Error>> + Unpin),
+    tx: &mpsc::Sender<Message>,
+    query_token: Option<String>,
+) -> Option<Option<String>> {
+    if let Some(token) = query_token.filter(|t| !t.is_empty()) {
+        warn!("websocket token in query string is deprecated; send type=auth as the first frame");
+        return Some(Some(token));
+    }
+    loop {
+        match stream.next().await {
+            None | Some(Err(_)) | Some(Ok(Message::Close(_))) => return None,
+            Some(Ok(Message::Ping(p))) => {
+                if tx.send(Message::Pong(p)).await.is_err() {
+                    return None;
+                }
+            }
+            Some(Ok(msg)) => {
+                let text = match inbound_text(msg, tx).await {
+                    Inbound::Skip => continue,
+                    Inbound::Closed => return None,
+                    Inbound::Text(t) => t,
+                };
+                let Ok(env) = serde_json::from_str::<Envelope>(&text) else {
+                    continue;
+                };
+                if env.kind != TYPE_AUTH {
+                    warn!(kind = %env.kind, "expected auth as first websocket frame");
+                    return Some(None);
+                }
+                let payload = env.payload.unwrap_or(serde_json::Value::Null);
+                let token = serde_json::from_value::<AuthPayload>(payload)
+                    .ok()
+                    .and_then(|p| p.token)
+                    .filter(|t| !t.is_empty());
+                return Some(token);
+            }
+        }
+    }
 }
 
 enum Inbound {
@@ -154,30 +227,21 @@ async fn inbound_text(msg: Message, tx: &mpsc::Sender<Message>) -> Inbound {
     }
 }
 
-fn inbound_kind(msg: &Message) -> Option<String> {
+fn inbound_envelope(msg: &Message) -> Option<(String, Option<String>)> {
     let text = match msg {
         Message::Text(t) => t.as_str(),
         Message::Binary(b) => std::str::from_utf8(b).ok()?,
         _ => return None,
     };
-    serde_json::from_str::<Envelope>(text)
-        .ok()
-        .map(|env| env.kind)
+    let env = serde_json::from_str::<Envelope>(text).ok()?;
+    Some((env.kind, env.id))
 }
 
 fn is_cancel_for(req_id: &Option<String>, msg: &Message) -> bool {
-    let text = match msg {
-        Message::Text(t) => t.as_str(),
-        Message::Binary(b) => match std::str::from_utf8(b) {
-            Ok(t) => t,
-            Err(_) => return false,
-        },
-        _ => return false,
-    };
-    let Ok(env) = serde_json::from_str::<Envelope>(text) else {
+    let Some((kind, id)) = inbound_envelope(msg) else {
         return false;
     };
-    env.kind == TYPE_CV_READ_CANCEL && env.id == *req_id
+    (kind == TYPE_CV_READ_CANCEL || kind == TYPE_CV_WRITE_CANCEL) && id == *req_id
 }
 
 async fn send_envelope(
@@ -197,19 +261,32 @@ async fn send_envelope(
     tx.send(Message::Text(json)).await.is_ok()
 }
 
-async fn dispatch(state: &AppState, token: Option<&str>, env: &Envelope) -> Ack {
+async fn dispatch(
+    state: &AppState,
+    token: Option<&str>,
+    env: &Envelope,
+    cancel: CancellationToken,
+    tx: mpsc::Sender<Message>,
+) -> Ack {
     let payload = env.payload.clone().unwrap_or(serde_json::Value::Null);
     match env.kind.as_str() {
         TYPE_CV_READ => match serde_json::from_value::<CvReadPayload>(payload) {
-            Ok(p) => cv_read(state, token, p).await,
+            Ok(p) => {
+                let cfg = state.config().await;
+                if cfg.mode.is_standalone() {
+                    cv_read_standalone(state, token, env, cancel, tx).await
+                } else {
+                    cv_read(state, token, p, &cancel).await
+                }
+            }
             Err(e) => Ack::fail("bad_payload", Some(e.to_string())),
         },
         TYPE_CV_WRITE => match serde_json::from_value::<CvWritePayload>(payload) {
-            Ok(p) => cv_write(state, token, p).await,
+            Ok(p) => cv_write(state, token, p, &cancel).await,
             Err(e) => Ack::fail("bad_payload", Some(e.to_string())),
         },
         TYPE_CV_BITOP => match serde_json::from_value::<CvBitopPayload>(payload) {
-            Ok(p) => cv_bitop(state, token, p).await,
+            Ok(p) => cv_bitop(state, token, p, &cancel).await,
             Err(e) => Ack::fail("bad_payload", Some(e.to_string())),
         },
         other => Ack::fail("unknown_command", Some(other.to_string())),
@@ -235,11 +312,12 @@ async fn probe_cv1(
     station_id: Option<u64>,
     address: u16,
     track: pc_core::Track,
+    cancel: Option<&CancellationToken>,
 ) -> Result<u8, ApiError> {
     let cfg = state.config().await;
     let batch = state
         .hub
-        .read_cvs(cfg.mode, token, station_id, address, &[1], track)
+        .read_cvs(cfg.mode, token, station_id, address, &[1], track, cancel)
         .await?;
     if let Some(entry) = batch.cvs.iter().find(|e| e.cv == 1) {
         return Ok(entry.value);
@@ -254,6 +332,7 @@ async fn read_chunked(
     address: u16,
     cvs: &[u16],
     track: pc_core::Track,
+    cancel: &CancellationToken,
 ) -> Result<CvBatch, ApiError> {
     if cvs.is_empty() {
         return Ok(CvBatch::default());
@@ -262,15 +341,34 @@ async fn read_chunked(
     if cfg.mode.is_standalone() || cvs.len() <= DCC_BUS_CHUNK {
         return state
             .hub
-            .read_cvs(cfg.mode, token, station_id, address, cvs, track)
+            .read_cvs(
+                cfg.mode,
+                token,
+                station_id,
+                address,
+                cvs,
+                track,
+                Some(cancel),
+            )
             .await;
     }
     let mut out = CvBatch::default();
     for chunk in cvs.chunks(DCC_BUS_CHUNK) {
+        if cancel.is_cancelled() {
+            return Err(ApiError::cancelled());
+        }
         out.merge(
             state
                 .hub
-                .read_cvs(cfg.mode, token, station_id, address, chunk, track)
+                .read_cvs(
+                    cfg.mode,
+                    token,
+                    station_id,
+                    address,
+                    chunk,
+                    track,
+                    Some(cancel),
+                )
                 .await?,
         );
     }
@@ -284,6 +382,7 @@ async fn write_chunked(
     address: u16,
     cvs: &[CvEntry],
     track: pc_core::Track,
+    cancel: &CancellationToken,
 ) -> Result<CvBatch, ApiError> {
     if cvs.is_empty() {
         return Ok(CvBatch::default());
@@ -292,22 +391,46 @@ async fn write_chunked(
     if cfg.mode.is_standalone() || cvs.len() <= DCC_BUS_CHUNK {
         return state
             .hub
-            .write_cvs(cfg.mode, token, station_id, address, cvs, track)
+            .write_cvs(
+                cfg.mode,
+                token,
+                station_id,
+                address,
+                cvs,
+                track,
+                Some(cancel),
+            )
             .await;
     }
     let mut out = CvBatch::default();
     for chunk in cvs.chunks(DCC_BUS_CHUNK) {
+        if cancel.is_cancelled() {
+            return Err(ApiError::cancelled());
+        }
         out.merge(
             state
                 .hub
-                .write_cvs(cfg.mode, token, station_id, address, chunk, track)
+                .write_cvs(
+                    cfg.mode,
+                    token,
+                    station_id,
+                    address,
+                    chunk,
+                    track,
+                    Some(cancel),
+                )
                 .await?,
         );
     }
     Ok(out)
 }
 
-async fn cv_read(state: &AppState, token: Option<&str>, p: CvReadPayload) -> Ack {
+async fn cv_read(
+    state: &AppState,
+    token: Option<&str>,
+    p: CvReadPayload,
+    cancel: &CancellationToken,
+) -> Ack {
     let cfg = state.config().await;
     if !cfg.enabled {
         return Ack::fail("pc_disabled", None);
@@ -319,7 +442,7 @@ async fn cv_read(state: &AppState, token: Option<&str>, p: CvReadPayload) -> Ack
     let dump = p.from.is_some() || p.to.is_some();
     let mut batch = CvBatch::default();
     if dump && nums.len() > 1 {
-        match probe_cv1(state, token, p.station_id, p.address, p.track).await {
+        match probe_cv1(state, token, p.station_id, p.address, p.track, Some(cancel)).await {
             Ok(value) => {
                 if nums.contains(&1) {
                     batch.cvs.push(CvEntry { cv: 1, value });
@@ -329,14 +452,21 @@ async fn cv_read(state: &AppState, token: Option<&str>, p: CvReadPayload) -> Ack
             Err(e) => return map_bus(e),
         }
     }
-    match read_chunked(state, token, p.station_id, p.address, &nums, p.track).await {
+    match read_chunked(
+        state,
+        token,
+        p.station_id,
+        p.address,
+        &nums,
+        p.track,
+        cancel,
+    )
+    .await
+    {
         Ok(part) => batch.merge(part),
         Err(e) => return map_bus(e),
     }
-    if !dump && batch.cvs.is_empty() && !batch.errors.is_empty() {
-        return Ack::fail("programming_failed", None);
-    }
-    Ack::ok_batch(batch.cvs, batch.errors)
+    finish_read(dump, batch)
 }
 
 async fn cv_read_standalone(
@@ -373,7 +503,16 @@ async fn cv_read_standalone(
             )
             .await;
         }
-        match probe_cv1(state, token, p.station_id, p.address, p.track).await {
+        match probe_cv1(
+            state,
+            token,
+            p.station_id,
+            p.address,
+            p.track,
+            Some(&cancel),
+        )
+        .await
+        {
             Ok(value) => {
                 if include_cv1 {
                     batch.cvs.push(CvEntry { cv: 1, value });
@@ -441,7 +580,12 @@ fn finish_read(dump: bool, batch: CvBatch) -> Ack {
     Ack::ok_batch(batch.cvs, batch.errors)
 }
 
-async fn cv_write(state: &AppState, token: Option<&str>, p: CvWritePayload) -> Ack {
+async fn cv_write(
+    state: &AppState,
+    token: Option<&str>,
+    p: CvWritePayload,
+    cancel: &CancellationToken,
+) -> Ack {
     let cfg = state.config().await;
     if !cfg.enabled {
         return Ack::fail("pc_disabled", None);
@@ -455,17 +599,34 @@ async fn cv_write(state: &AppState, token: Option<&str>, p: CvWritePayload) -> A
         }
     }
     if p.cvs.len() > 1 {
-        if let Err(e) = probe_cv1(state, token, p.station_id, p.address, p.track).await {
+        if let Err(e) =
+            probe_cv1(state, token, p.station_id, p.address, p.track, Some(cancel)).await
+        {
             return map_bus(e);
         }
     }
-    match write_chunked(state, token, p.station_id, p.address, &p.cvs, p.track).await {
+    match write_chunked(
+        state,
+        token,
+        p.station_id,
+        p.address,
+        &p.cvs,
+        p.track,
+        cancel,
+    )
+    .await
+    {
         Ok(batch) => Ack::ok_batch(batch.cvs, batch.errors),
         Err(e) => map_bus(e),
     }
 }
 
-async fn cv_bitop(state: &AppState, token: Option<&str>, p: CvBitopPayload) -> Ack {
+async fn cv_bitop(
+    state: &AppState,
+    token: Option<&str>,
+    p: CvBitopPayload,
+    cancel: &CancellationToken,
+) -> Ack {
     if !valid_cv(p.cv) {
         return Ack::fail("invalid_cv", None);
     }
@@ -475,13 +636,21 @@ async fn cv_bitop(state: &AppState, token: Option<&str>, p: CvBitopPayload) -> A
     }
     let read = match state
         .hub
-        .read_cvs(cfg.mode, token, p.station_id, p.address, &[p.cv], p.track)
+        .read_cvs(
+            cfg.mode,
+            token,
+            p.station_id,
+            p.address,
+            &[p.cv],
+            p.track,
+            Some(cancel),
+        )
         .await
     {
         Ok(v) => v,
         Err(e) => return map_bus(e),
     };
-    let Some(old) = read.cvs.first() else {
+    let Some(old) = read.cvs.iter().find(|e| e.cv == p.cv) else {
         return Ack::fail("programming_failed", Some("empty read".into()));
     };
     let new_val = apply_bitop(old.value, p.and_mask, p.or_mask);
@@ -491,10 +660,24 @@ async fn cv_bitop(state: &AppState, token: Option<&str>, p: CvBitopPayload) -> A
     };
     match state
         .hub
-        .write_cvs(cfg.mode, token, p.station_id, p.address, &[entry], p.track)
+        .write_cvs(
+            cfg.mode,
+            token,
+            p.station_id,
+            p.address,
+            &[entry],
+            p.track,
+            Some(cancel),
+        )
         .await
     {
-        Ok(cvs) => Ack::ok_cvs(cvs.cvs),
+        Ok(batch) if batch.errors.is_empty() && batch.cvs.iter().any(|e| e.cv == p.cv) => {
+            Ack::ok_cvs(batch.cvs)
+        }
+        Ok(_) => Ack::fail(
+            "programming_failed",
+            Some(format!("CV{} not written", p.cv)),
+        ),
         Err(e) => map_bus(e),
     }
 }
@@ -514,6 +697,10 @@ mod tests {
             &id,
             &text(r#"{"type":"cv.read.cancel","id":"req-1"}"#),
         ));
+        assert!(is_cancel_for(
+            &id,
+            &text(r#"{"type":"cv.write.cancel","id":"req-1"}"#),
+        ));
         assert!(!is_cancel_for(
             &id,
             &text(r#"{"type":"cv.read.cancel","id":"other"}"#),
@@ -526,12 +713,14 @@ mod tests {
     }
 
     #[test]
-    fn inbound_kind_reads_type() {
+    fn inbound_envelope_reads_type() {
         assert_eq!(
-            inbound_kind(&text(r#"{"type":"cv.write","id":"1"}"#)).as_deref(),
+            inbound_envelope(&text(r#"{"type":"cv.write","id":"1"}"#))
+                .map(|(kind, _)| kind)
+                .as_deref(),
             Some("cv.write")
         );
-        assert_eq!(inbound_kind(&Message::Ping(Vec::new())), None);
+        assert_eq!(inbound_envelope(&Message::Ping(Vec::new())), None);
     }
 
     #[test]

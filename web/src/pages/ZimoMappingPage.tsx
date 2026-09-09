@@ -19,6 +19,8 @@ import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
+import ToggleButton from "@mui/material/ToggleButton";
+import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
@@ -104,6 +106,7 @@ export default function ZimoMappingPage({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [open, setOpen] = useState<Record<number, boolean | undefined>>({});
+  const [activeNmra, setActiveNmra] = useState(0);
 
   const values = useMemo(() => {
     const next: Record<number, number> = {};
@@ -180,6 +183,48 @@ export default function ZimoMappingPage({
         </Tooltip>
         <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
           {t("mapping.cvCaption", { cv: CV_NO_LEFT_SHIFT })}
+        </Typography>
+        <Typography color="text.secondary" sx={{ mb: 1 }}>
+          {t("mapping.pickKey")}
+        </Typography>
+        <ToggleButtonGroup
+          exclusive
+          value={activeNmra}
+          onChange={(_, k) => {
+            if (k !== null) setActiveNmra(k);
+          }}
+          sx={{ flexWrap: "wrap", mb: 2 }}
+        >
+          {NMRA_KEYS.map((k) => (
+            <ToggleButton key={k.cv} value={k.index} sx={{ minWidth: 56, minHeight: 48 }}>
+              {nmraKeyLabel(t, k.index)}
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
+        <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, mb: 3 }}>
+          {NMRA_OUTPUTS.map((out) => {
+            const key = NMRA_KEYS.find((k) => k.index === activeNmra) ?? NMRA_KEYS[0];
+            const bit = nmraBitForOutput(noLeftShift, key.index, out);
+            const on = bit !== null && nmraBitSet(values[key.cv] ?? 0, bit);
+            return (
+              <ToggleButton
+                key={out}
+                value={out}
+                selected={on}
+                disabled={bit === null}
+                onChange={() => {
+                  if (bit === null) return;
+                  patch(key.cv, nmraSetBit(values[key.cv] ?? 0, bit, !on));
+                }}
+                sx={{ minWidth: 88, minHeight: 48 }}
+              >
+                {outputLabel(t, out)}
+              </ToggleButton>
+            );
+          })}
+        </Box>
+        <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+          {t("mapping.nmraPreview")}
         </Typography>
         <TableContainer>
           <Table size="small" stickyHeader>

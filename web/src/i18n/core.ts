@@ -50,7 +50,10 @@ export function optionalT(
 ): string | undefined {
   if (!key) return undefined;
   const lang = (i18n.resolvedLanguage ?? i18n.language ?? "pl").split("-")[0];
-  const value = i18n.getResource(lang, "translation", key);
+  let value = i18n.getResource(lang, "translation", key);
+  if (typeof value !== "string" || value.length === 0) {
+    value = i18n.getResource("pl", "translation", key);
+  }
   if (typeof value !== "string" || value.length === 0) {
     return undefined;
   }

@@ -87,7 +87,7 @@ impl Z21Section {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", default)]
+#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
 pub struct Config {
     pub http: String,
     pub enabled: bool,
@@ -99,6 +99,8 @@ pub struct Config {
     pub cors_enabled: bool,
     pub cors_origins: Vec<String>,
     pub idle_timeout_secs: u64,
+    /// Allow `http://<ip|*.local>:5176/auth/callback` (Vite on LAN). Off in production.
+    pub dev_redirect_uris: bool,
 }
 
 impl Default for Config {
@@ -116,6 +118,7 @@ impl Default for Config {
             cors_enabled: false,
             cors_origins: Vec::new(),
             idle_timeout_secs: 86_400,
+            dev_redirect_uris: false,
         }
     }
 }
@@ -124,6 +127,16 @@ pub fn merge_builtin_redirect_uris(uris: &mut Vec<String>) {
     for builtin in BUILTIN_REDIRECT_URIS {
         push_unique(uris, (*builtin).to_string());
     }
+}
+
+pub fn apply_redirect_merges(cfg: &mut Config) {
+    merge_builtin_redirect_uris(&mut cfg.redirect_uris);
+    if cfg.dev_redirect_uris {
+        merge_vite_redirect_uris(&mut cfg.redirect_uris);
+    }
+}
+
+fn merge_vite_redirect_uris(uris: &mut Vec<String>) {
     for host in ["bigfred.local", "localhost"] {
         push_unique(uris, dev_vite_redirect_uri(host));
     }
@@ -215,7 +228,7 @@ impl Config {
     pub fn load_or_seed(path: &Path) -> Result<Self, String> {
         let loader = JsonFile::<Config>::new(path).create_default();
         let mut cfg = loader.load().map_err(|e| e.to_string())?;
-        merge_builtin_redirect_uris(&mut cfg.redirect_uris);
+        apply_redirect_merges(&mut cfg);
         Ok(cfg)
     }
 
@@ -274,7 +287,7 @@ impl Config {
         if self.redirect_uris.iter().any(|u| u.trim() == uri) {
             return true;
         }
-        dev_vite_callback_allowed(uri)
+        self.dev_redirect_uris && dev_vite_callback_allowed(uri)
     }
 }
 
@@ -360,17 +373,25 @@ mod tests {
 
     #[test]
     fn allows_vite_dev_callback_on_lan_ip() {
-        let cfg = Config::default();
+        let cfg = Config {
+            dev_redirect_uris: true,
+            ..Config::default()
+        };
         assert!(cfg.redirect_uri_allowed("http://192.168.0.86:5176/auth/callback"));
         assert!(cfg.redirect_uri_allowed("http://localhost:5176/auth/callback"));
         assert!(!cfg.redirect_uri_allowed("http://192.168.0.86:8092/auth/callback"));
         assert!(!cfg.redirect_uri_allowed("http://evil.example:5176/auth/callback"));
+        let prod = Config::default();
+        assert!(!prod.redirect_uri_allowed("http://192.168.0.86:5176/auth/callback"));
     }
 
     #[test]
     fn merge_adds_lan_vite_redirects() {
         let mut uris = Vec::new();
-        merge_builtin_redirect_uris(&mut uris);
+        merge_vite_redirect_uris(&mut uris);
         assert!(uris.iter().any(|u| u.contains(":5176/auth/callback")));
+        let mut prod = Vec::new();
+        merge_builtin_redirect_uris(&mut prod);
+        assert!(!prod.iter().any(|u| u.contains(":5176/auth/callback")));
     }
 }

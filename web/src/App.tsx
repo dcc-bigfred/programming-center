@@ -2,22 +2,31 @@ import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import CircularProgress from "@mui/material/CircularProgress";
 import { Navigate, Route, Routes } from "react-router-dom";
-import type { ReactNode } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { CvRegistryProvider } from "./cv/CvRegistry";
 import AppShell from "./components/AppShell";
 import CvReadOverlay from "./components/CvReadOverlay";
-import AddressPage from "./pages/AddressPage";
-import BackupPage from "./pages/BackupPage";
-import CallbackPage from "./pages/CallbackPage";
-import CvListPage from "./pages/CvListPage";
-import HomePage from "./pages/HomePage";
-import LoginPage from "./pages/LoginPage";
-import SpeedPage from "./pages/SpeedPage";
-import VolumePage from "./pages/VolumePage";
-import MappingPage from "./pages/MappingPage";
+
+const AddressPage = lazy(() => import("./pages/AddressPage"));
+const BackupPage = lazy(() => import("./pages/BackupPage"));
+const CallbackPage = lazy(() => import("./pages/CallbackPage"));
+const CvListPage = lazy(() => import("./pages/CvListPage"));
+const HomePage = lazy(() => import("./pages/HomePage"));
+const LoginPage = lazy(() => import("./pages/LoginPage"));
+const SpeedPage = lazy(() => import("./pages/SpeedPage"));
+const VolumePage = lazy(() => import("./pages/VolumePage"));
+const MappingPage = lazy(() => import("./pages/MappingPage"));
+
+function RouteFallback() {
+  return (
+    <Box sx={{ display: "flex", justifyContent: "center", py: 10 }}>
+      <CircularProgress />
+    </Box>
+  );
+}
 
 function Protected({ children }: { children: ReactNode }) {
   const { ready, token, config } = useAuth();
@@ -50,67 +59,69 @@ function Protected({ children }: { children: ReactNode }) {
 
 function Router() {
   return (
-    <Routes>
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/auth/callback" element={<CallbackPage />} />
-      <Route
-        path="/"
-        element={
-          <Protected>
-            <HomePage />
-          </Protected>
-        }
-      />
-      <Route
-        path="/cv"
-        element={
-          <Protected>
-            <CvListPage />
-          </Protected>
-        }
-      />
-      <Route
-        path="/speed"
-        element={
-          <Protected>
-            <SpeedPage />
-          </Protected>
-        }
-      />
-      <Route
-        path="/address"
-        element={
-          <Protected>
-            <AddressPage />
-          </Protected>
-        }
-      />
-      <Route
-        path="/volume"
-        element={
-          <Protected>
-            <VolumePage />
-          </Protected>
-        }
-      />
-      <Route
-        path="/mapping"
-        element={
-          <Protected>
-            <MappingPage />
-          </Protected>
-        }
-      />
-      <Route
-        path="/backup"
-        element={
-          <Protected>
-            <BackupPage />
-          </Protected>
-        }
-      />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <Suspense fallback={<RouteFallback />}>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/auth/callback" element={<CallbackPage />} />
+        <Route
+          path="/"
+          element={
+            <Protected>
+              <HomePage />
+            </Protected>
+          }
+        />
+        <Route
+          path="/cv"
+          element={
+            <Protected>
+              <CvListPage />
+            </Protected>
+          }
+        />
+        <Route
+          path="/speed"
+          element={
+            <Protected>
+              <SpeedPage />
+            </Protected>
+          }
+        />
+        <Route
+          path="/address"
+          element={
+            <Protected>
+              <AddressPage />
+            </Protected>
+          }
+        />
+        <Route
+          path="/volume"
+          element={
+            <Protected>
+              <VolumePage />
+            </Protected>
+          }
+        />
+        <Route
+          path="/mapping"
+          element={
+            <Protected>
+              <MappingPage />
+            </Protected>
+          }
+        />
+        <Route
+          path="/backup"
+          element={
+            <Protected>
+              <BackupPage />
+            </Protected>
+          }
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Suspense>
   );
 }
 

@@ -2,6 +2,7 @@ import {
   cvDiffs,
   discardCvTable,
   ensureCvScope,
+  flushCvTable,
   formatCvDiffs,
   getCv,
   rememberRead,
@@ -82,6 +83,7 @@ describe("CvRegistry table", () => {
   it("loads a matching snapshot from sessionStorage", () => {
     scope();
     rememberRead([{ cv: 7, value: 42 }]);
+    flushCvTable();
     resetCvTable();
     expect(getCv(7)).toBeUndefined();
     ensureCvScope({ decoder: "nmra", address: 3, station: "" });

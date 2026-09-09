@@ -5,6 +5,8 @@ export const CV_MAX = 1024;
 const OVERLAY_LIST_FULL_MAX = 80;
 export const OVERLAY_WINDOW = 21;
 
+const STATUS: CvSlotStatus[] = ["pending", "reading", "ok", "failed"];
+
 export type CvSlotStatus = "pending" | "reading" | "ok" | "failed";
 
 export interface CvProgressSlot {
@@ -28,7 +30,10 @@ export interface ReadProgressState {
   total: number;
   done: number;
   current: number | null;
-  slots: CvProgressSlot[];
+  cvs: number[];
+  /** 0 pending, 1 reading, 2 ok, 3 failed — same order as `cvs`. */
+  status: Uint8Array;
+  index: Map<number, number>;
 }
 
 export function validCv(cv: number): boolean {
@@ -74,7 +79,9 @@ export function createProgressState(
     total: cvs.length,
     done: 0,
     current: cvs[0] ?? null,
-    slots: cvs.map((cv) => ({ cv, status: "pending" })),
+    cvs,
+    status: new Uint8Array(cvs.length),
+    index: new Map(cvs.map((cv, i) => [cv, i])),
   };
 }
 
@@ -82,38 +89,40 @@ export function applyProgressFrame(
   state: ReadProgressState,
   payload: CvProgressPayload,
 ): ReadProgressState {
-  const slots = state.slots.map((s) => ({ ...s }));
-  const mark = (cv: number, status: CvSlotStatus) => {
-    const row = slots.find((s) => s.cv === cv);
-    if (row) row.status = status;
+  const mark = (cv: number, code: number) => {
+    const i = state.index.get(cv);
+    if (i !== undefined) state.status[i] = code;
   };
-  if (payload.current !== undefined) {
-    mark(payload.current, "reading");
-  }
-  if (payload.cv !== undefined) {
-    mark(payload.cv, payload.failed ? "failed" : "ok");
-  }
+  if (payload.current !== undefined) mark(payload.current, 1);
+  if (payload.cv !== undefined) mark(payload.cv, payload.failed ? 3 : 2);
   return {
     ...state,
     streaming: true,
     total: payload.total,
     done: payload.done,
     current: payload.current ?? payload.cv ?? state.current,
-    slots,
   };
 }
 
+export function progressSlots(state: ReadProgressState): CvProgressSlot[] {
+  return state.cvs.map((cv, i) => ({
+    cv,
+    status: STATUS[state.status[i] ?? 0] ?? "pending",
+  }));
+}
+
 export function overlayVisibleSlots(state: ReadProgressState): CvProgressSlot[] {
-  if (state.slots.length <= OVERLAY_LIST_FULL_MAX) return state.slots;
-  const reading = state.slots.findIndex((s) => s.status === "reading");
-  const i = reading >= 0 ? reading : Math.min(state.done, state.slots.length - 1);
+  const slots = progressSlots(state);
+  if (slots.length <= OVERLAY_LIST_FULL_MAX) return slots;
+  const reading = slots.findIndex((s) => s.status === "reading");
+  const i = reading >= 0 ? reading : Math.min(state.done, slots.length - 1);
   const half = Math.floor(OVERLAY_WINDOW / 2);
   let start = Math.max(0, i - half);
-  let end = Math.min(state.slots.length, start + OVERLAY_WINDOW);
+  let end = Math.min(slots.length, start + OVERLAY_WINDOW);
   if (end - start < OVERLAY_WINDOW) {
     start = Math.max(0, end - OVERLAY_WINDOW);
   }
-  return state.slots.slice(start, end);
+  return slots.slice(start, end);
 }
 
 export function progressValue(payload: CvProgressPayload): { cv: number; value: number } | null {

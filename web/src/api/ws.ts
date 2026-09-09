@@ -1,6 +1,6 @@
 import { ApiError, getToken } from "./client";
 import type { Ack, CvEntry, Track } from "./types";
-import { rememberRead } from "../cv/table";
+import { flushCvTable, rememberRead } from "../cv/table";
 import {
   applyProgressFrame,
   createProgressState,
@@ -10,11 +10,15 @@ import {
 } from "../features/cvReadProgress";
 
 const TYPE_ACK = "ack";
+const TYPE_AUTH = "auth";
 const TYPE_CV_READ = "cv.read";
 const TYPE_CV_READ_CANCEL = "cv.read.cancel";
+const TYPE_CV_WRITE_CANCEL = "cv.write.cancel";
 const TYPE_CV_PROGRESS = "cv.progress";
 const TYPE_CV_WRITE = "cv.write";
 const TYPE_CV_BITOP = "cv.bitop";
+
+const REQUEST_IDLE_MS = 30_000;
 
 interface Envelope {
   type: string;
@@ -24,19 +28,25 @@ interface Envelope {
 
 type PendingKind = "read" | "write";
 
+type OverlayMode = "read" | "write";
+
+export type ReadOverlaySnap = {
+  open: boolean;
+  mode: OverlayMode;
+  progress: ReadProgressState | null;
+};
+
 type Pending = {
   kind: PendingKind;
   resolve: (ack: Ack) => void;
   reject: (err: Error) => void;
+  touch: () => void;
+  idleTimer: number | null;
 };
 
-function wsUrl(token: string | null): string {
+function wsUrl(): string {
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-  const base = `${proto}//${window.location.host}/api/v1/pc/ws`;
-  if (token) {
-    return `${base}?token=${encodeURIComponent(token)}`;
-  }
-  return base;
+  return `${proto}//${window.location.host}/api/v1/pc/ws`;
 }
 
 function cancelled(): ApiError {
@@ -60,17 +70,20 @@ export function requestId(): string {
 export class ProgrammingClient {
   private socket: WebSocket | null = null;
   private pending = new Map<string, Pending>();
-  private openWaiters: Array<() => void> = [];
+  private openWaiters: Array<(err?: Error) => void> = [];
   private wantedToken: string | null | undefined;
   private readBusy = 0;
+  private overlayMode: OverlayMode = "read";
   private readListeners = new Set<() => void>();
   private readAborts = new Set<AbortController>();
   private progress: ReadProgressState | null = null;
   private ignoreProgress = new Set<string>();
-  private overlaySnap: { open: boolean; progress: ReadProgressState | null } = {
-    open: false,
-    progress: null,
-  };
+  private overlaySnap: ReadOverlaySnap = { open: false, mode: "read", progress: null };
+  private reconnectAt = 0;
+  private reconnectTimer: number | null = null;
+  private readQueue: Promise<unknown> = Promise.resolve();
+  private applyBuffer: Array<{ cv: number; value: number }> = [];
+  private flushFrame: number | null = null;
 
   subscribeReadBusy(listener: () => void): () => void {
     this.readListeners.add(listener);
@@ -87,8 +100,8 @@ export class ProgrammingClient {
     return this.progress;
   }
 
-  /** Cached `{ open, progress }` so `useSyncExternalStore` does not loop. */
-  getReadOverlay(): { open: boolean; progress: ReadProgressState | null } {
+  /** Cached snapshot so `useSyncExternalStore` does not loop. */
+  getReadOverlay(): ReadOverlaySnap {
     return this.overlaySnap;
   }
 
@@ -99,15 +112,23 @@ export class ProgrammingClient {
   }
 
   connect(token: string | null): void {
-    if (this.socket && this.wantedToken === token && this.socket.readyState <= WebSocket.OPEN) {
+    if (this.socket && this.wantedToken === token && this.socket.readyState === WebSocket.OPEN) {
       return;
     }
     this.wantedToken = token;
+    this.clearReconnect();
     this.teardown(new ApiError(0, "ws_closed"));
-    const socket = new WebSocket(wsUrl(token));
+    const socket = new WebSocket(wsUrl());
     this.socket = socket;
     socket.addEventListener("open", () => {
       if (this.socket !== socket) return;
+      this.reconnectAt = 0;
+      try {
+        socket.send(JSON.stringify({ type: TYPE_AUTH, payload: { token } }));
+      } catch {
+        this.failAll(new ApiError(0, "ws_send_failed"));
+        return;
+      }
       for (const wake of this.openWaiters.splice(0)) wake();
     });
     socket.addEventListener("message", (ev) => this.onMessage(String(ev.data)));
@@ -115,6 +136,7 @@ export class ProgrammingClient {
       if (this.socket === socket) {
         this.socket = null;
         this.failAll(new ApiError(0, "ws_closed"));
+        this.scheduleReconnect();
       }
     });
     socket.addEventListener("error", () => {
@@ -126,7 +148,35 @@ export class ProgrammingClient {
 
   disconnect(): void {
     this.wantedToken = undefined;
+    this.clearReconnect();
     this.teardown(new ApiError(0, "ws_closed"));
+  }
+
+  private clearReconnect(): void {
+    if (this.reconnectTimer !== null) {
+      window.clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+  }
+
+  private scheduleReconnect(): void {
+    if (this.wantedToken === undefined || this.reconnectTimer !== null) return;
+    const delay = Math.min(8_000, 500 * 2 ** this.reconnectAt);
+    this.reconnectAt += 1;
+    this.reconnectTimer = window.setTimeout(() => {
+      this.reconnectTimer = null;
+      if (this.wantedToken === undefined) return;
+      this.connect(this.wantedToken);
+    }, delay);
+  }
+
+  private enqueueRead<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.readQueue.then(fn, fn);
+    this.readQueue = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
   }
 
   async cvRead(input: {
@@ -139,26 +189,35 @@ export class ProgrammingClient {
     skipAddress?: boolean;
     signal?: AbortSignal;
     liveApply?: boolean;
+    /** Recalculate the CV list after waiting in the read queue. */
+    stillMissing?: () => number[];
   }): Promise<{ cvs: CvEntry[]; errors: number[] }> {
     const liveApply = input.liveApply !== false;
-    const cvs = expandCvList(input.cvs, input.from, input.to, input.skipAddress);
-    const ack = await this.runRead(input.signal, (signal) =>
-      this.request(
-        TYPE_CV_READ,
-        {
-          stationId: input.stationId,
-          address: input.address,
-          track: input.track,
-          cvs: input.cvs,
-          from: input.from,
-          to: input.to,
-          skipAddress: input.skipAddress,
-        },
-        "read",
-        signal,
-        { liveApply, cvs },
-      ),
-    );
+    const ack = await this.enqueueRead(async () => {
+      const cvs = input.stillMissing
+        ? input.stillMissing()
+        : expandCvList(input.cvs, input.from, input.to, input.skipAddress);
+      if (cvs.length === 0) {
+        return { ok: true, cvs: [], errors: [] };
+      }
+      return this.runRead(input.signal, (signal) =>
+        this.request(
+          TYPE_CV_READ,
+          {
+            stationId: input.stationId,
+            address: input.address,
+            track: input.track,
+            cvs: input.stillMissing ? cvs : input.cvs,
+            from: input.stillMissing ? undefined : input.from,
+            to: input.stillMissing ? undefined : input.to,
+            skipAddress: input.stillMissing ? undefined : input.skipAddress,
+          },
+          "read",
+          signal,
+          { liveApply, cvs },
+        ),
+      );
+    });
     return { cvs: ack.cvs ?? [], errors: ack.errors ?? [] };
   }
 
@@ -167,6 +226,7 @@ export class ProgrammingClient {
     address: number;
     track: Track;
     cvs: CvEntry[];
+    signal?: AbortSignal;
   }): Promise<{ cvs: CvEntry[]; errors: number[] }> {
     const ack = await this.request(
       TYPE_CV_WRITE,
@@ -177,6 +237,7 @@ export class ProgrammingClient {
         cvs: input.cvs,
       },
       "write",
+      input.signal,
     );
     return { cvs: ack.cvs ?? input.cvs, errors: ack.errors ?? [] };
   }
@@ -197,7 +258,7 @@ export class ProgrammingClient {
     outer: AbortSignal | undefined,
     fn: (signal: AbortSignal) => Promise<Ack>,
   ): Promise<Ack> {
-    return this.withReadOverlay(outer, fn);
+    return this.withOverlay({ mode: "read" }, fn, outer);
   }
 
   /** Keep the overlay up across several reads (e.g. CV 29 then the rest). */
@@ -205,11 +266,20 @@ export class ProgrammingClient {
     outer: AbortSignal | undefined,
     fn: (signal: AbortSignal) => Promise<T>,
   ): Promise<T> {
+    return this.withOverlay({ mode: "read" }, fn, outer);
+  }
+
+  async withOverlay<T>(
+    opts: { mode: OverlayMode },
+    fn: (signal: AbortSignal) => Promise<T>,
+    outer?: AbortSignal,
+  ): Promise<T> {
     if (outer?.aborted) throw cancelled();
     const ac = new AbortController();
     const onOuter = () => ac.abort();
     outer?.addEventListener("abort", onOuter, { once: true });
     this.readAborts.add(ac);
+    this.overlayMode = opts.mode;
     this.beginRead();
     try {
       return await fn(ac.signal);
@@ -230,24 +300,35 @@ export class ProgrammingClient {
     if (this.readBusy === 0) {
       this.progress = null;
       this.ignoreProgress.clear();
+      this.flushApplyBuffer();
+      flushCvTable();
     }
     this.emitRead();
   }
 
   private emitRead(): void {
-    this.overlaySnap = { open: this.readBusy > 0, progress: this.progress };
+    this.overlaySnap = {
+      open: this.readBusy > 0,
+      mode: this.overlayMode,
+      progress: this.progress,
+    };
     for (const listener of this.readListeners) {
       listener();
     }
   }
 
-  private sendCancel(id: string): void {
+  private sendCancel(id: string, kind: PendingKind): void {
     this.ignoreProgress.add(id);
     if (this.progress?.requestId === id) {
       this.progress = null;
     }
     if (this.socket?.readyState === WebSocket.OPEN) {
-      this.socket.send(JSON.stringify({ type: TYPE_CV_READ_CANCEL, id }));
+      const type = kind === "write" ? TYPE_CV_WRITE_CANCEL : TYPE_CV_READ_CANCEL;
+      try {
+        this.socket.send(JSON.stringify({ type, id }));
+      } catch {
+        /* closed between check and send */
+      }
     }
     this.emitRead();
   }
@@ -270,34 +351,68 @@ export class ProgrammingClient {
       this.emitRead();
     }
     const ack = await new Promise<Ack>((resolve, reject) => {
-      const onAbort = () => {
-        this.pending.delete(id);
-        if (kind === "read") this.sendCancel(id);
-        reject(cancelled());
-      };
-      if (signal?.aborted) {
-        if (kind === "read") this.sendCancel(id);
-        reject(cancelled());
-        return;
-      }
-      signal?.addEventListener("abort", onAbort, { once: true });
-      this.pending.set(id, {
+      const pending: Pending = {
         kind,
+        idleTimer: null,
+        touch: () => {
+          if (pending.idleTimer !== null) window.clearTimeout(pending.idleTimer);
+          pending.idleTimer = window.setTimeout(() => {
+            this.pending.delete(id);
+            this.sendCancel(id, kind);
+            reject(new ApiError(0, "ws_timeout"));
+          }, REQUEST_IDLE_MS);
+        },
         resolve: (value) => {
+          if (pending.idleTimer !== null) window.clearTimeout(pending.idleTimer);
           signal?.removeEventListener("abort", onAbort);
           resolve(value);
         },
         reject: (err) => {
+          if (pending.idleTimer !== null) window.clearTimeout(pending.idleTimer);
           signal?.removeEventListener("abort", onAbort);
           reject(err);
         },
-      });
-      this.socket?.send(JSON.stringify(env));
+      };
+      const onAbort = () => {
+        this.pending.delete(id);
+        if (pending.idleTimer !== null) window.clearTimeout(pending.idleTimer);
+        this.sendCancel(id, kind);
+        reject(cancelled());
+      };
+      if (signal?.aborted) {
+        this.sendCancel(id, kind);
+        reject(cancelled());
+        return;
+      }
+      this.pending.set(id, pending);
+      signal?.addEventListener("abort", onAbort, { once: true });
+      if (signal?.aborted) {
+        onAbort();
+        return;
+      }
+      const socket = this.socket;
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
+        this.pending.delete(id);
+        signal?.removeEventListener("abort", onAbort);
+        reject(new ApiError(0, "ws_closed"));
+        return;
+      }
+      try {
+        socket.send(JSON.stringify(env));
+      } catch (err) {
+        this.pending.delete(id);
+        signal?.removeEventListener("abort", onAbort);
+        reject(new ApiError(0, "ws_send_failed", String(err)));
+        return;
+      }
+      pending.touch();
     });
     if (this.progress?.requestId === id) {
       this.progress = null;
       this.emitRead();
     }
+    this.flushApplyBuffer();
+    flushCvTable();
     if (!ack.ok) {
       throw new ApiError(0, ack.error ?? "generic", ack.detail);
     }
@@ -313,19 +428,24 @@ export class ProgrammingClient {
         reject(cancelled());
         return;
       }
+      const waiter = (err?: Error) => {
+        window.clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
+        if (err) reject(err);
+        else resolve();
+      };
       const timer = window.setTimeout(() => {
+        this.openWaiters = this.openWaiters.filter((w) => w !== waiter);
+        this.socket?.close();
         reject(new ApiError(0, "ws_timeout"));
       }, 10_000);
       const onAbort = () => {
+        this.openWaiters = this.openWaiters.filter((w) => w !== waiter);
         window.clearTimeout(timer);
         reject(cancelled());
       };
       signal?.addEventListener("abort", onAbort, { once: true });
-      this.openWaiters.push(() => {
-        window.clearTimeout(timer);
-        signal?.removeEventListener("abort", onAbort);
-        resolve();
-      });
+      this.openWaiters.push(waiter);
     });
   }
 
@@ -355,6 +475,7 @@ export class ProgrammingClient {
     if (this.ignoreProgress.has(id) || this.progress?.requestId !== id) {
       return;
     }
+    this.pending.get(id)?.touch();
     const frame = payload as {
       total?: number;
       done?: number;
@@ -382,15 +503,35 @@ export class ProgrammingClient {
       value: frame.value,
       failed: frame.failed,
     });
-    if (entry) rememberRead([entry]);
-    this.emitRead();
+    if (entry) this.applyBuffer.push(entry);
+    this.scheduleFlush();
+  }
+
+  private scheduleFlush(): void {
+    if (this.flushFrame !== null) return;
+    this.flushFrame = window.requestAnimationFrame(() => {
+      this.flushFrame = null;
+      this.flushApplyBuffer();
+      this.emitRead();
+    });
+  }
+
+  private flushApplyBuffer(): void {
+    if (this.applyBuffer.length === 0) return;
+    const batch = this.applyBuffer;
+    this.applyBuffer = [];
+    rememberRead(batch);
   }
 
   private failAll(err: Error): void {
-    for (const waiter of this.pending.values()) {
+    for (const waiter of this.openWaiters.splice(0)) waiter(err);
+    for (const [id, waiter] of this.pending) {
+      this.ignoreProgress.add(id);
       waiter.reject(err);
     }
     this.pending.clear();
+    this.flushApplyBuffer();
+    flushCvTable();
   }
 
   private teardown(err: Error): void {

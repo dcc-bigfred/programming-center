@@ -32,8 +32,10 @@ pub fn open(path: &Path) -> Result<Db, ApiError> {
     })?;
     let mut conn = SqliteConnection::establish(url)
         .map_err(|err| ApiError::internal("db_open_failed").with_detail(err.to_string()))?;
-    conn.batch_execute("PRAGMA foreign_keys = ON")
-        .map_err(|err| ApiError::internal("db_pragma_failed").with_detail(err.to_string()))?;
+    conn.batch_execute(
+        "PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;",
+    )
+    .map_err(|err| ApiError::internal("db_pragma_failed").with_detail(err.to_string()))?;
     run_migrations(&mut conn)?;
     Ok(Arc::new(Mutex::new(conn)))
 }

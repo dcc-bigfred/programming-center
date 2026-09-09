@@ -6,6 +6,8 @@
     "menu": "Menu",
     "logout": "Log out",
     "logoutReset": "Log out / Reset",
+    "confirmLogoutTitle": "Log out / reset?",
+    "confirmLogoutBody": "Unsaved CV changes will be discarded and the session table cleared.",
     "home": "Home",
     "back": "Back",
     "retry": "Try again",
@@ -35,7 +37,12 @@
     "overview": "Home",
     "programming": "Programming",
     "changeLists": "Change lists",
-    "changes": "Changes"
+    "changes": "Changes",
+    "featureUnavailable": "Not available for this decoder"
+  },
+  "confirm": {
+    "ok": "OK",
+    "cancel": "Cancel"
   },
   "login": {
     "heading": "Programming Center",
@@ -99,6 +106,7 @@
     "decel": "Deceleration time (CV 4)",
     "readAll": "Read",
     "saveAll": "Save",
+    "notReadYet": "Not read yet",
     "zimo": {
       "curveTitle": "Speed curve",
       "accelTitle": "Acceleration",
@@ -144,6 +152,7 @@
   "volume": {
     "heading": "Volume",
     "percent": "Level {{value}}%",
+    "notReadYet": "Not read yet",
     "read": "Read",
     "save": "Save"
   },
@@ -152,6 +161,8 @@
     "read": "Read",
     "nmraTitle": "Keys and wires",
     "nmraHint": "Which key turns on which wire.",
+    "pickKey": "Pick a key, then tap the outputs it should drive.",
+    "nmraPreview": "Overview",
     "anyKey": "Allow any key to drive any output",
     "anyKeyTooltip": "Higher keys can turn on the same wires as F0–F2, not only the later ones.",
     "swissTitle": "Lighting scenes",
@@ -219,7 +230,10 @@
     "file": "Choose file",
     "startRestore": "Restore CVs",
     "parseError": "Invalid line: {{line}}",
-    "restoreErrors": "Not written: {{cvs}}"
+    "restoreErrors": "Not written: {{cvs}}",
+    "confirmRestoreTitle": "Restore CVs to the decoder?",
+    "confirmRestoreBody": "This writes {{count}} CVs to the locomotive. Type the number of CVs to confirm.",
+    "confirmRestoreType": "Number of CVs ({{count}})"
   },
   "changes": {
     "apply": "Apply",
@@ -228,7 +242,10 @@
     "copy": "Copy",
     "close": "Close",
     "empty": "No changes",
-    "dialogTitle": "CV changes"
+    "dialogTitle": "CV changes",
+    "applyPartial": "Not written: {{cvs}}",
+    "confirmDiscardTitle": "Discard unsaved changes?",
+    "confirmDiscardBody": "Staged CV values will be thrown away."
   },
   "changeLists": {
     "createTitle": "Create a change list",
@@ -243,7 +260,17 @@
     "restoreAria": "Load into current changes",
     "loadIntoCurrent": "Load into current changes",
     "replaceWithCurrent": "Replace with current changes",
-    "delete": "Delete change list"
+    "delete": "Delete change list",
+    "confirmReplaceTitle": "Replace this saved list?",
+    "confirmReplaceBody": "“{{name}}” will be overwritten with the current staged CVs.",
+    "confirmDeleteTitle": "Delete this change list?",
+    "confirmDeleteBody": "“{{name}}” will be removed.",
+    "confirmOverwriteDiffsTitle": "Overwrite current changes?",
+    "confirmOverwriteDiffsBody": "Loading this list will replace the CVs you have already staged."
+  },
+  "writeOverlay": {
+    "message": "Writing CVs…",
+    "cancel": "Cancel"
   },
   "readOverlay": {
     "message": "Reading CVs…",
@@ -282,9 +309,16 @@
     "ws_closed": "The programming connection closed.",
     "ws_error": "WebSocket error.",
     "ws_timeout": "Could not open the programming WebSocket.",
-    "cancelled": "Read cancelled.",
+    "cancelled": "Cancelled.",
     "unknown_command": "Unknown programming command.",
-    "bad_payload": "Invalid command payload."
+    "bad_payload": "Invalid command payload.",
+    "short_circuit": "Short circuit on the programming track.",
+    "busy": "Programming is already in progress.",
+    "ws_send_failed": "Could not send the programming command.",
+    "cv_read_empty": "The decoder did not return that CV.",
+    "changelist_too_large": "That change list is too large.",
+    "z21_session_replaced": "The Z21 connection was replaced. Try again.",
+    "upstream_body_too_large": "The upstream response was too large."
   },
   "decoder": {
     "zimo-ms450": "ZIMO MS450",

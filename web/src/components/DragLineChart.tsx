@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { useTheme } from "@mui/material/styles";
 
@@ -39,8 +39,10 @@ interface Props {
 
 const PAD = { l: 48, r: 16, t: 14, b: 36 };
 const HANDLE_R = 12;
+/** Touch target larger than the visible circle — 28-point handles overlap. */
+const HIT_R = 22;
 
-export default function DragLineChart({
+function DragLineChart({
   xMin,
   xMax,
   yMin,
@@ -55,6 +57,8 @@ export default function DragLineChart({
   const theme = useTheme();
   const svgRef = useRef<SVGSVGElement | null>(null);
   const drag = useRef<{ id: string; axis: HandleAxis } | null>(null);
+  const ghostRef = useRef<{ id: string; x: number; y: number } | null>(null);
+  const [ghost, setGhost] = useState<{ id: string; x: number; y: number } | null>(null);
   const [width, setWidth] = useState(640);
 
   useEffect(() => {
@@ -90,16 +94,37 @@ export default function DragLineChart({
       const vy = ((clientY - rect.top) / rect.height) * height;
       const x = xMin + ((vx - PAD.l) / Math.max(1, width - PAD.l - PAD.r)) * xSpan;
       const y = yMin + (1 - (vy - PAD.t) / Math.max(1, height - PAD.t - PAD.b)) * ySpan;
-      return { x, y };
+      return { x, y, vx, vy };
     },
     [xMin, yMin, xSpan, ySpan, width, height],
   );
 
-  const onPointerDown = (id: string, axis: HandleAxis, ev: ReactPointerEvent<SVGCircleElement>) => {
+  const nearestHandle = (vx: number, vy: number): ChartHandle | null => {
+    let best: ChartHandle | null = null;
+    let bestD = HIT_R * HIT_R;
+    for (const h of handles) {
+      const shown = ghost && ghost.id === h.id ? ghost : h;
+      const { px, py } = toPx(shown.x, shown.y);
+      const d = (px - vx) ** 2 + (py - vy) ** 2;
+      if (d <= bestD) {
+        best = h;
+        bestD = d;
+      }
+    }
+    return best;
+  };
+
+  const onPointerDown = (ev: ReactPointerEvent<SVGSVGElement>) => {
+    const pos = fromClient(ev.clientX, ev.clientY);
+    if (!pos) return;
+    const handle = nearestHandle(pos.vx, pos.vy);
+    if (!handle) return;
     ev.preventDefault();
-    ev.stopPropagation();
     svgRef.current?.setPointerCapture(ev.pointerId);
-    drag.current = { id, axis };
+    drag.current = { id: handle.id, axis: handle.axis };
+    const next = { id: handle.id, x: handle.x, y: handle.y };
+    ghostRef.current = next;
+    setGhost(next);
   };
 
   const onPointerMove = (ev: ReactPointerEvent<SVGSVGElement>) => {
@@ -111,11 +136,18 @@ export default function DragLineChart({
     if (!handle) return;
     const x = active.axis === "x" ? pos.x : handle.x;
     const y = active.axis === "y" ? pos.y : handle.y;
-    onMove(active.id, x, y);
+    const next = { id: active.id, x, y };
+    ghostRef.current = next;
+    setGhost(next);
   };
 
   const onPointerUp = () => {
+    const active = drag.current;
+    const g = ghostRef.current;
     drag.current = null;
+    ghostRef.current = null;
+    setGhost(null);
+    if (active && g) onMove(active.id, g.x, g.y);
   };
 
   const gridX = 5;
@@ -130,6 +162,7 @@ export default function DragLineChart({
       width="100%"
       height={height}
       style={{ display: "block", touchAction: "none", userSelect: "none" }}
+      onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
@@ -211,19 +244,22 @@ export default function DragLineChart({
         />
       ))}
       {handles.map((h) => {
-        const { px, py } = toPx(h.x, h.y);
+        const shown = ghost && ghost.id === h.id ? ghost : h;
+        const { px, py } = toPx(shown.x, shown.y);
         return (
-          <circle
-            key={h.id}
-            cx={px}
-            cy={py}
-            r={HANDLE_R}
-            fill={h.color}
-            stroke="#fff"
-            strokeWidth={2}
-            style={{ cursor: h.axis === "x" ? "ew-resize" : "ns-resize" }}
-            onPointerDown={(ev) => onPointerDown(h.id, h.axis, ev)}
-          />
+          <g key={h.id}>
+            <circle cx={px} cy={py} r={HIT_R} fill="transparent" pointerEvents="none" />
+            <circle
+              cx={px}
+              cy={py}
+              r={HANDLE_R}
+              fill={h.color}
+              stroke="#fff"
+              strokeWidth={2}
+              style={{ cursor: h.axis === "x" ? "ew-resize" : "ns-resize" }}
+              pointerEvents="none"
+            />
+          </g>
         );
       })}
     </svg>
@@ -234,3 +270,5 @@ function formatTick(n: number): string {
   if (Math.abs(n) >= 100 || Number.isInteger(n)) return String(Math.round(n));
   return n.toFixed(1);
 }
+
+export default memo(DragLineChart);

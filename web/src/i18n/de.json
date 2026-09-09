@@ -6,6 +6,8 @@
     "menu": "Menü",
     "logout": "Abmelden",
     "logoutReset": "Abmelden / Zurücksetzen",
+    "confirmLogoutTitle": "Abmelden / zurücksetzen?",
+    "confirmLogoutBody": "Ungespeicherte CV-Änderungen gehen verloren und die Sitzungstabelle wird geleert.",
     "home": "Hauptmenü",
     "back": "Zurück",
     "retry": "Erneut versuchen",
@@ -35,7 +37,12 @@
     "overview": "Startseite",
     "programming": "Programmierung",
     "changeLists": "Änderungslisten",
-    "changes": "Änderungen"
+    "changes": "Änderungen",
+    "featureUnavailable": "Für diesen Decoder nicht verfügbar"
+  },
+  "confirm": {
+    "ok": "OK",
+    "cancel": "Abbrechen"
   },
   "login": {
     "heading": "Programming Center",
@@ -99,6 +106,7 @@
     "decel": "Bremszeit (CV 4)",
     "readAll": "Lesen",
     "saveAll": "Speichern",
+    "notReadYet": "Noch nicht gelesen",
     "zimo": {
       "curveTitle": "Geschwindigkeitskurve",
       "accelTitle": "Beschleunigung",
@@ -144,6 +152,7 @@
   "volume": {
     "heading": "Lautstärke",
     "percent": "Pegel {{value}}%",
+    "notReadYet": "Noch nicht gelesen",
     "read": "Lesen",
     "save": "Speichern"
   },
@@ -152,6 +161,8 @@
     "read": "Lesen",
     "nmraTitle": "Tasten und Anschlüsse",
     "nmraHint": "Welche Taste schaltet welchen Anschluss.",
+    "pickKey": "Taste wählen, dann die Ausgänge tippen, die sie steuern soll.",
+    "nmraPreview": "Übersicht",
     "anyKey": "Jede Taste darf jeden Ausgang steuern",
     "anyKeyTooltip": "Höhere Tasten können dieselben Anschlüsse schalten wie F0–F2, nicht nur die späteren.",
     "swissTitle": "Lichtszenen",
@@ -219,7 +230,10 @@
     "file": "Datei wählen",
     "startRestore": "CVs wiederherstellen",
     "parseError": "Ungültige Zeile: {{line}}",
-    "restoreErrors": "Nicht geschrieben: {{cvs}}"
+    "restoreErrors": "Nicht geschrieben: {{cvs}}",
+    "confirmRestoreTitle": "CVs in den Decoder schreiben?",
+    "confirmRestoreBody": "Es werden {{count}} CVs in die Lok geschrieben. Tippe die CV-Anzahl zur Bestätigung ein.",
+    "confirmRestoreType": "Anzahl der CVs ({{count}})"
   },
   "changes": {
     "apply": "Übernehmen",
@@ -228,7 +242,10 @@
     "copy": "Kopieren",
     "close": "Schließen",
     "empty": "Keine Änderungen",
-    "dialogTitle": "CV-Änderungen"
+    "dialogTitle": "CV-Änderungen",
+    "applyPartial": "Nicht geschrieben: {{cvs}}",
+    "confirmDiscardTitle": "Ungespeicherte Änderungen verwerfen?",
+    "confirmDiscardBody": "Die vorgemerkten CV-Werte gehen verloren."
   },
   "changeLists": {
     "createTitle": "Neue Änderungsliste anlegen",
@@ -243,7 +260,17 @@
     "restoreAria": "In aktuelle Änderungen laden",
     "loadIntoCurrent": "In aktuelle Änderungen laden",
     "replaceWithCurrent": "Durch aktuelle Änderungen ersetzen",
-    "delete": "Änderungsliste löschen"
+    "delete": "Änderungsliste löschen",
+    "confirmReplaceTitle": "Diese gespeicherte Liste ersetzen?",
+    "confirmReplaceBody": "„{{name}}“ wird mit den aktuellen vorgemerkten CVs überschrieben.",
+    "confirmDeleteTitle": "Diese Änderungsliste löschen?",
+    "confirmDeleteBody": "„{{name}}“ wird entfernt.",
+    "confirmOverwriteDiffsTitle": "Aktuelle Änderungen überschreiben?",
+    "confirmOverwriteDiffsBody": "Das Laden dieser Liste ersetzt CVs, die du schon vorgemerkt hast."
+  },
+  "writeOverlay": {
+    "message": "CVs werden geschrieben…",
+    "cancel": "Abbrechen"
   },
   "readOverlay": {
     "message": "CVs werden gelesen…",
@@ -282,9 +309,16 @@
     "ws_closed": "Die Programmierverbindung wurde getrennt.",
     "ws_error": "WebSocket-Fehler.",
     "ws_timeout": "Programmier-WebSocket konnte nicht geöffnet werden.",
-    "cancelled": "Lesen abgebrochen.",
+    "cancelled": "Abgebrochen.",
     "unknown_command": "Unbekannter Programmierbefehl.",
-    "bad_payload": "Ungültiger Befehl."
+    "bad_payload": "Ungültiger Befehl.",
+    "short_circuit": "Kurzschluss auf dem Programmiergleis.",
+    "busy": "Programmierung läuft bereits.",
+    "ws_send_failed": "Programmierbefehl konnte nicht gesendet werden.",
+    "cv_read_empty": "Der Decoder hat diese CV nicht geliefert.",
+    "changelist_too_large": "Diese Änderungsliste ist zu groß.",
+    "z21_session_replaced": "Die Z21-Verbindung wurde ersetzt. Bitte erneut versuchen.",
+    "upstream_body_too_large": "Die Upstream-Antwort war zu groß."
   },
   "decoder": {
     "zimo-ms450": "ZIMO MS450",

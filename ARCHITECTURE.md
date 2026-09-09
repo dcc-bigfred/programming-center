@@ -269,20 +269,22 @@ updated so POM follows the new DCC address. Selecting a decoder (home
 tiles, Detect, or the Navigator) reads those CVs on the programming track
 and fills `address` only when the session address is `0`.
 
-Any `cv.read` shows a full-viewport overlay
-(“Odczytuję CV… / Anuluj”). In **standalone**, the daemon streams
-`cv.progress` (current CV, `done`/`total`, value or `failed`); the overlay
-shows a determinate bar and a short CV list, and values are
-`rememberRead` as they arrive so the page behind the overlay updates.
-**Anuluj** sends `cv.read.cancel` (same `id`) and stops the Z21 loop
-between CVs. A late `ack` is ignored. BigFred still waits for one `ack`
-(spinner only). Writes are not covered, except backup restore which uses the
-same overlay. Backup dump sets `liveApply: false` so the loco table is
-untouched. **Kopia zapasowa** (`/backup`) is always in the left nav
-(no decoder required). Dump and restore call `cv.read` / `cv.write`
-directly and never touch CvRegistry. Dump default range is CV 1–1000
-(`from`/`to`/`skipAddress` on the payload). A failed CV 1 probe returns
-`decoder_absent` and does not walk the rest of the list.
+Any `cv.read` or `cv.write` (including Apply and backup restore) shows a
+full-viewport modal overlay with a focus trap and `aria-live` progress
+(“Odczytuję CV…” / “Zapisuję CV…” / **Anuluj**). In **standalone**, the
+daemon streams `cv.progress` (current CV, `done`/`total`, value or
+`failed`); the overlay shows a determinate bar and a short CV list, and
+values are `rememberRead` as they arrive so the page behind the overlay
+updates. **Anuluj** sends `cv.read.cancel` or `cv.write.cancel` (same
+`id`) and stops the Z21 loop between CVs. A late `ack` is ignored.
+BigFred still waits for one `ack` (spinner only). Backup dump sets
+`liveApply: false` so the loco table is untouched. **Kopia zapasowa**
+(`/backup`) is always in the left nav (no decoder required). Dump and
+restore call `cv.read` / `cv.write` directly and never touch CvRegistry.
+Dump default range is CV 1–1000 (`from`/`to`/`skipAddress` on the
+payload). A failed CV 1 probe returns `decoder_absent` and does not walk
+the rest of the list. Apply promotes only confirmed CVs to the baseline;
+per-CV failures stay in **Zmiany**.
 
 **CV list:** one `CvListPage` fed by the selected decoder’s `CvItem[]`.
 `groupKey` on a CV gathers matching items into one collapsible section
@@ -303,7 +305,9 @@ Command stations: `GET /api/v1/layouts/{id}/command-stations`, filter
 
 ## 9. Programming WebSocket
 
-`ws://…/api/v1/pc/ws?token=` — `token` required only in `bigfred`.
+`ws://…/api/v1/pc/ws` — first frame after upgrade is `{ type: "auth", payload: { token } }`.
+Query `?token=` is still accepted (deprecated). Token is required only in
+`bigfred`. HTTP traces log method + path only (no query).
 
 Envelope `{ type, id, payload }`. Ack `{ ok, error, detail, cvs, errors }`.
 
@@ -311,9 +315,11 @@ Envelope `{ type, id, payload }`. Ack `{ ok, error, detail, cvs, errors }`.
 |---|---|
 | `cv.read` | Direct read. Payload may list `cvs` and/or inclusive `from`–`to`, plus `skipAddress`. |
 | `cv.progress` | Standalone only. Same `id` as the read. `{ total, done, current?, cv?, value?, failed? }` before and after each CV. |
-| `cv.read.cancel` | Standalone: stop the in-flight read (`id` of that `cv.read`). No ack. |
+| `cv.read.cancel` | Standalone: stop the in-flight read (`id` of that `cv.read`). |
 | `cv.write` | Direct write |
+| `cv.write.cancel` | Stop the in-flight write (`id` of that `cv.write`). |
 | `cv.bitop` | RMW: `new = (old & andMask) \| orMask` |
+| `auth` | First frame: `{ token }`. Never put the token in the URL. |
 
 Dump/restore of many CVs: the daemon probes CV 1 first, then chunks
 dcc-bus frames to stay under the 30 s ack timeout. Per-CV failures come
@@ -374,7 +380,9 @@ are encoded in `web/src/features/zimoMapping.ts`; notes in
 - One programming WebSocket session from the tablet.
 - In `bigfred` the layout must be open in BigFred (dcc-bus).
 - Standalone has no command-station catalogue and no proxy.
-- `enabled: false` by default.
+- `enabled: false` by default. That means the device is inert: programming,
+  the BigFred proxy, and OAuth token exchange all refuse. `GET /api/v1/pc/config`
+  and `/healthz` stay open so the SPA can show the disabled screen.
 - Proxy refuses `Upgrade`.
 - Idle logout uses `idleTimeoutSecs` (default 86400) when a token is present.
 - Header **Wyloguj / Zresetuj** is always shown (SSO and standalone). It

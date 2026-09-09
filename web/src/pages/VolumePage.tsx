@@ -42,8 +42,8 @@ export default function VolumePage() {
 
   const map = volumeMapFor(decoder.id);
   const staged = map ? registry.get(map.cv) : undefined;
-  const percent =
-    map && staged !== undefined ? decodeVolume(staged, map.max) : 50;
+  const known = map !== undefined && staged !== undefined;
+  const percent = known ? decodeVolume(staged, map.max) : null;
 
   const read = async () => {
     setBusy(true);
@@ -64,11 +64,14 @@ export default function VolumePage() {
       <Stack spacing={3}>
         {error ? <ErrorAlert error={error} /> : null}
         <Box>
-          <Typography gutterBottom>{t("volume.percent", { value: percent })}</Typography>
+          <Typography gutterBottom>
+            {known ? t("volume.percent", { value: percent }) : t("volume.notReadYet")}
+          </Typography>
           <Slider
             min={0}
             max={100}
-            value={percent}
+            value={percent ?? 0}
+            disabled={!known}
             onChange={(_, v) => {
               const n = Array.isArray(v) ? v[0] : v;
               if (!map) return;

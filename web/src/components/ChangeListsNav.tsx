@@ -29,6 +29,7 @@ import {
   replaceChangeList,
   subscribeChangeLists,
 } from "../features/changelists";
+import { useConfirm } from "./ConfirmDialog";
 import ErrorAlert from "./ErrorAlert";
 
 const item = {
@@ -51,6 +52,7 @@ const filterField = {
 export default function ChangeListsNav({ decoderId }: { decoderId: string | undefined }) {
   const { t } = useTranslation();
   const { diffs, setMany, formatDiffs } = useCvRegistry();
+  const { confirm, dialog } = useConfirm();
   const epoch = useSyncExternalStore(subscribeChangeLists, changeListEpoch, changeListEpoch);
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<ChangeList[]>([]);
@@ -93,12 +95,27 @@ export default function ChangeListsNav({ decoderId }: { decoderId: string | unde
     return items.filter((list) => list.name.toLowerCase().includes(needle));
   }, [filter, items]);
 
-  const restore = (list: ChangeList) => {
+  const restore = async (list: ChangeList): Promise<boolean> => {
+    if (diffs.length > 0) {
+      const ok = await confirm({
+        title: t("changeLists.confirmOverwriteDiffsTitle"),
+        body: t("changeLists.confirmOverwriteDiffsBody"),
+        danger: true,
+      });
+      if (!ok) return false;
+    }
     setMany(list.cvs);
+    return true;
   };
 
   const replaceSaved = async () => {
     if (!active || diffs.length === 0) return;
+    const ok = await confirm({
+      title: t("changeLists.confirmReplaceTitle"),
+      body: t("changeLists.confirmReplaceBody", { name: active.name }),
+      danger: true,
+    });
+    if (!ok) return;
     setBusy(true);
     setActionError(null);
     try {
@@ -114,6 +131,12 @@ export default function ChangeListsNav({ decoderId }: { decoderId: string | unde
 
   const remove = async () => {
     if (!active) return;
+    const ok = await confirm({
+      title: t("changeLists.confirmDeleteTitle"),
+      body: t("changeLists.confirmDeleteBody", { name: active.name }),
+      danger: true,
+    });
+    if (!ok) return;
     setBusy(true);
     setActionError(null);
     try {
@@ -180,7 +203,7 @@ export default function ChangeListsNav({ decoderId }: { decoderId: string | unde
                     aria-label={t("changeLists.restoreAria")}
                     onClick={(e) => {
                       e.stopPropagation();
-                      restore(list);
+                      void restore(list);
                     }}
                     sx={{ color: "rgba(255,255,255,0.7)" }}
                   >
@@ -237,8 +260,10 @@ export default function ChangeListsNav({ decoderId }: { decoderId: string | unde
             <Button
               disabled={busy || !active}
               onClick={() => {
-                if (active) restore(active);
-                setActive(null);
+                if (!active) return;
+                void restore(active).then((did) => {
+                  if (did) setActive(null);
+                });
               }}
             >
               {t("changeLists.loadIntoCurrent")}
@@ -255,6 +280,7 @@ export default function ChangeListsNav({ decoderId }: { decoderId: string | unde
           </Stack>
         </DialogActions>
       </Dialog>
+      {dialog}
     </>
   );
 }

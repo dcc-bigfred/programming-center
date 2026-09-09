@@ -4,25 +4,26 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { api, getToken, setToken, STATE_KEY } from "../api/client";
+import { ApiError, api, getExpiresAt, getToken, setToken, STATE_KEY } from "../api/client";
 import { programming } from "../api/ws";
 import { resetCvTable } from "../cv/table";
 import type { Me, PublicConfig } from "../api/types";
 
 interface AuthValue {
   config: PublicConfig | null;
-  configError: string | null;
+  configError: unknown;
   ready: boolean;
   token: string | null;
   me: Me | null;
   redirectUri: string;
   startSso: (layoutId: number) => void;
-  adoptToken: (token: string) => Promise<void>;
+  adoptToken: (token: string, expiresAt?: string | null) => Promise<void>;
   logout: (reason?: "idle" | "manual") => void;
   idleReason: "idle" | null;
   clearIdleReason: () => void;
@@ -47,16 +48,21 @@ function randomState(): string {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const [config, setConfig] = useState<PublicConfig | null>(null);
-  const [configError, setConfigError] = useState<string | null>(null);
+  const [configError, setConfigError] = useState<unknown>(null);
   const [ready, setReady] = useState(false);
   const [token, setTokenState] = useState<string | null>(getToken());
   const [me, setMe] = useState<Me | null>(null);
   const [idleReason, setIdleReason] = useState<"idle" | null>(null);
+  const [meAttempt, setMeAttempt] = useState(0);
+  const meRetry = useRef<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    let inFlight = false;
 
     const loadConfig = () => {
+      if (inFlight) return;
+      inFlight = true;
       api
         .publicConfig()
         .then((cfg) => {
@@ -65,12 +71,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setConfigError(null);
           }
         })
-        .catch((err: Error) => {
+        .catch((err: unknown) => {
           if (!cancelled) {
-            setConfigError(err.message);
+            setConfigError(err);
           }
         })
         .finally(() => {
+          inFlight = false;
           if (!cancelled) {
             setReady(true);
           }
@@ -138,15 +145,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setMe(value);
         }
       })
-      .catch(() => {
-        if (!cancelled) {
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
           logout("manual");
+          return;
         }
+        if (meRetry.current !== null) window.clearTimeout(meRetry.current);
+        meRetry.current = window.setTimeout(() => setMeAttempt((n) => n + 1), 5_000);
       });
     return () => {
       cancelled = true;
+      if (meRetry.current !== null) {
+        window.clearTimeout(meRetry.current);
+        meRetry.current = null;
+      }
     };
-  }, [token, config, logout]);
+  }, [token, config, logout, meAttempt]);
 
   useEffect(() => {
     const seconds = config?.idleTimeoutSecs ?? 0;
@@ -160,11 +175,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
     const events: Array<keyof WindowEventMap> = ["pointerdown", "keydown", "touchstart", "wheel"];
     events.forEach((event) => window.addEventListener(event, reset, { passive: true }));
+    const unsubscribe = programming.subscribeReadBusy(() => {
+      if (programming.isReadBusy()) reset();
+    });
     return () => {
       window.clearTimeout(timer);
       events.forEach((event) => window.removeEventListener(event, reset));
+      unsubscribe();
     };
   }, [config, token, logout]);
+
+  useEffect(() => {
+    if (!token) return;
+    const raw = getExpiresAt();
+    if (!raw) return;
+    const at = Date.parse(raw);
+    if (!Number.isFinite(at)) return;
+    const delay = Math.max(0, at - Date.now() - 5_000);
+    const timer = window.setTimeout(() => logout("idle"), delay);
+    return () => window.clearTimeout(timer);
+  }, [token, logout]);
 
   const redirectUri = useMemo(() => pickRedirectUri(config), [config]);
 
@@ -189,8 +219,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [config, redirectUri],
   );
 
-  const adoptToken = useCallback(async (accessToken: string) => {
-    setToken(accessToken);
+  const adoptToken = useCallback(async (accessToken: string, expiresAt?: string | null) => {
+    setToken(accessToken, expiresAt);
     setTokenState(accessToken);
     setMe(await api.me());
   }, []);

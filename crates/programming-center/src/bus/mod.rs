@@ -37,6 +37,7 @@ pub trait ProgrammingBus: Send + Sync {
         address: u16,
         cvs: &[u16],
         track: Track,
+        cancel: Option<&CancellationToken>,
     ) -> Result<CvBatch, ApiError>;
 
     async fn write_cvs(
@@ -46,6 +47,7 @@ pub trait ProgrammingBus: Send + Sync {
         address: u16,
         cvs: &[CvEntry],
         track: Track,
+        cancel: Option<&CancellationToken>,
     ) -> Result<CvBatch, ApiError>;
 }
 
@@ -64,6 +66,7 @@ impl Hub {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn read_cvs(
         &self,
         mode: IntegrationMode,
@@ -72,21 +75,23 @@ impl Hub {
         address: u16,
         cvs: &[u16],
         track: Track,
+        cancel: Option<&CancellationToken>,
     ) -> Result<CvBatch, ApiError> {
         match mode {
             IntegrationMode::Standalone => {
                 self.z21
-                    .read_cvs(token, station_id, address, cvs, track)
+                    .read_cvs(token, station_id, address, cvs, track, cancel)
                     .await
             }
             IntegrationMode::Bigfred => {
                 self.dcc
-                    .read_cvs(token, station_id, address, cvs, track)
+                    .read_cvs(token, station_id, address, cvs, track, cancel)
                     .await
             }
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn write_cvs(
         &self,
         mode: IntegrationMode,
@@ -95,16 +100,17 @@ impl Hub {
         address: u16,
         cvs: &[CvEntry],
         track: Track,
+        cancel: Option<&CancellationToken>,
     ) -> Result<CvBatch, ApiError> {
         match mode {
             IntegrationMode::Standalone => {
                 self.z21
-                    .write_cvs(token, station_id, address, cvs, track)
+                    .write_cvs(token, station_id, address, cvs, track, cancel)
                     .await
             }
             IntegrationMode::Bigfred => {
                 self.dcc
-                    .write_cvs(token, station_id, address, cvs, track)
+                    .write_cvs(token, station_id, address, cvs, track, cancel)
                     .await
             }
         }

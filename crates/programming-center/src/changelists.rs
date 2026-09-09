@@ -79,6 +79,9 @@ fn normalize_decoder(raw: &str) -> Result<String, ApiError> {
     if decoder.is_empty() {
         return Err(ApiError::bad_request("missing_decoder"));
     }
+    if decoder.len() > 128 {
+        return Err(ApiError::bad_request("missing_decoder"));
+    }
     Ok(decoder)
 }
 
@@ -87,12 +90,18 @@ fn normalize_name(raw: &str) -> Result<String, ApiError> {
     if name.is_empty() {
         return Err(ApiError::bad_request("empty_name"));
     }
+    if name.len() > 128 {
+        return Err(ApiError::bad_request("empty_name"));
+    }
     Ok(name)
 }
 
 fn encode_cvs(cvs: &[CvEntry]) -> Result<String, ApiError> {
     if cvs.is_empty() {
         return Err(ApiError::bad_request("empty_changelist"));
+    }
+    if cvs.len() > 1024 {
+        return Err(ApiError::bad_request("changelist_too_large"));
     }
     for entry in cvs {
         if !valid_cv(entry.cv) {
@@ -107,6 +116,7 @@ fn list_rows(conn: &mut SqliteConnection, decoder: &str) -> Result<Vec<Changelis
     changelists
         .filter(decoder_id.eq(decoder))
         .order(created_at.desc())
+        .limit(100)
         .select(ChangelistRow::as_select())
         .load(conn)
         .map_err(|err| ApiError::internal("db_query_failed").with_detail(err.to_string()))
@@ -173,8 +183,14 @@ pub async fn list(
     let rows = with_db(state.db.clone(), move |conn| list_rows(conn, &decoder)).await?;
     let out = rows
         .into_iter()
-        .map(ChangelistJson::from_row)
-        .collect::<Result<Vec<_>, _>>()?;
+        .filter_map(|row| match ChangelistJson::from_row(row) {
+            Ok(json) => Some(json),
+            Err(err) => {
+                tracing::warn!(code = %err.code, "skipping corrupt changelist row");
+                None
+            }
+        })
+        .collect();
     Ok(Json(out))
 }
 

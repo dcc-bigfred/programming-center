@@ -31,6 +31,9 @@ pub async fn oauth_token(
     Json(body): Json<TokenRequest>,
 ) -> ApiResult<Json<bigfred_client::TokenResponse>> {
     let cfg = state.config().await;
+    if !cfg.enabled {
+        return Err(ApiError::forbidden("pc_disabled"));
+    }
     if !cfg.mode.is_bigfred() {
         return Err(ApiError::forbidden("standalone_no_sso"));
     }
@@ -62,6 +65,9 @@ pub async fn proxy(State(state): State<AppState>, req: Request<Body>) -> Respons
 
 async fn forward(state: AppState, req: Request<Body>) -> Result<Response, ApiError> {
     let cfg = state.config().await;
+    if !cfg.enabled {
+        return Err(ApiError::forbidden("pc_disabled"));
+    }
     if !cfg.mode.is_bigfred() {
         return Err(ApiError::forbidden("standalone_no_proxy"));
     }
@@ -114,6 +120,12 @@ async fn forward(state: AppState, req: Request<Body>) -> Result<Response, ApiErr
         ) {
             out_headers.insert(name, value);
         }
+    }
+    if forwarded.body.len() > MAX_BODY_BYTES {
+        return Err(ApiError::new(
+            StatusCode::BAD_GATEWAY,
+            "upstream_body_too_large",
+        ));
     }
     Ok((status, out_headers, forwarded.body).into_response())
 }

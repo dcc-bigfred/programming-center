@@ -6,6 +6,8 @@
     "menu": "Menu",
     "logout": "Wyloguj",
     "logoutReset": "Wyloguj / Zresetuj",
+    "confirmLogoutTitle": "Wylogować / zresetować?",
+    "confirmLogoutBody": "Niezapisane zmiany CV zostaną odrzucone, a tabela sesji wyczyszczona.",
     "home": "Menu główne",
     "back": "Wstecz",
     "retry": "Spróbuj ponownie",
@@ -35,7 +37,12 @@
     "overview": "Strona główna",
     "programming": "Programowanie",
     "changeLists": "Listy zmian",
-    "changes": "Zmiany"
+    "changes": "Zmiany",
+    "featureUnavailable": "Niedostępne dla tego dekodera"
+  },
+  "confirm": {
+    "ok": "OK",
+    "cancel": "Anuluj"
   },
   "login": {
     "heading": "Programming Center",
@@ -99,6 +106,7 @@
     "decel": "Czas hamowania (CV 4)",
     "readAll": "Odczytaj",
     "saveAll": "Zapisz",
+    "notReadYet": "Nie odczytano",
     "zimo": {
       "curveTitle": "Krzywa prędkości",
       "accelTitle": "Rozpędzanie",
@@ -144,6 +152,7 @@
   "volume": {
     "heading": "Głośność",
     "percent": "Poziom {{value}}%",
+    "notReadYet": "Nie odczytano",
     "read": "Odczytaj",
     "save": "Zapisz"
   },
@@ -152,6 +161,8 @@
     "read": "Odczytaj",
     "nmraTitle": "Przyciski i przewody",
     "nmraHint": "Który przycisk zapala który przewód.",
+    "pickKey": "Wybierz przycisk, potem włącz wyjścia, które ma sterować.",
+    "nmraPreview": "Podgląd",
     "anyKey": "Dowolny przycisk może sterować dowolnym wyjściem",
     "anyKeyTooltip": "Wyższe przyciski mogą zapalać te same przewody co F0–F2, nie tylko późniejsze.",
     "swissTitle": "Sceny świetlne",
@@ -219,7 +230,10 @@
     "file": "Wybierz plik",
     "startRestore": "Odtwórz CV",
     "parseError": "Nieprawidłowa linia: {{line}}",
-    "restoreErrors": "Nie zapisano: {{cvs}}"
+    "restoreErrors": "Nie zapisano: {{cvs}}",
+    "confirmRestoreTitle": "Odtworzyć CV w dekoderze?",
+    "confirmRestoreBody": "Zostanie zapisanych {{count}} CV do lokomotywy. Wpisz liczbę CV, aby potwierdzić.",
+    "confirmRestoreType": "Liczba CV ({{count}})"
   },
   "changes": {
     "apply": "Zaaplikuj",
@@ -228,7 +242,10 @@
     "copy": "Kopiuj",
     "close": "Zamknij",
     "empty": "Brak zmian",
-    "dialogTitle": "Zmiany CV"
+    "dialogTitle": "Zmiany CV",
+    "applyPartial": "Nie zapisano: {{cvs}}",
+    "confirmDiscardTitle": "Odrzucić niezapisane zmiany?",
+    "confirmDiscardBody": "Wystawione wartości CV zostaną utracone."
   },
   "changeLists": {
     "createTitle": "Utwórz nową changelistę",
@@ -243,7 +260,17 @@
     "restoreAria": "Wczytaj do obecnych zmian",
     "loadIntoCurrent": "Wczytaj do obecnych zmian",
     "replaceWithCurrent": "Zastąp obecnymi zmianami",
-    "delete": "Usuń listę zmian"
+    "delete": "Usuń listę zmian",
+    "confirmReplaceTitle": "Zastąpić tę zapisaną listę?",
+    "confirmReplaceBody": "„{{name}}” zostanie nadpisana obecnymi wystawionymi CV.",
+    "confirmDeleteTitle": "Usunąć tę listę zmian?",
+    "confirmDeleteBody": "„{{name}}” zostanie usunięta.",
+    "confirmOverwriteDiffsTitle": "Nadpisać obecne zmiany?",
+    "confirmOverwriteDiffsBody": "Wczytanie tej listy zastąpi CV, które już wystawiłeś."
+  },
+  "writeOverlay": {
+    "message": "Zapisuję CV…",
+    "cancel": "Anuluj"
   },
   "readOverlay": {
     "message": "Odczytuję CV…",
@@ -282,9 +309,16 @@
     "ws_closed": "Połączenie programowania zostało przerwane.",
     "ws_error": "Błąd połączenia WebSocket.",
     "ws_timeout": "Nie udało się otworzyć WebSocket.",
-    "cancelled": "Anulowano odczyt.",
+    "cancelled": "Anulowano.",
     "unknown_command": "Nieznana komenda programowania.",
-    "bad_payload": "Nieprawidłowa treść polecenia."
+    "bad_payload": "Nieprawidłowa treść polecenia.",
+    "short_circuit": "Zwarcie na torze programującym.",
+    "busy": "Programowanie już trwa.",
+    "ws_send_failed": "Nie udało się wysłać polecenia programowania.",
+    "cv_read_empty": "Dekoder nie zwrócił tego CV.",
+    "changelist_too_large": "Ta lista zmian jest za duża.",
+    "z21_session_replaced": "Połączenie Z21 zostało zastąpione. Spróbuj ponownie.",
+    "upstream_body_too_large": "Odpowiedź upstream była za duża."
   },
   "decoder": {
     "zimo-ms450": "ZIMO MS450",

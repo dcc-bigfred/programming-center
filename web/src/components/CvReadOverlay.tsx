@@ -1,4 +1,3 @@
-import Backdrop from "@mui/material/Backdrop";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
@@ -6,6 +5,7 @@ import LinearProgress from "@mui/material/LinearProgress";
 import List from "@mui/material/List";
 import ListItem from "@mui/material/ListItem";
 import ListItemText from "@mui/material/ListItemText";
+import Modal from "@mui/material/Modal";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
@@ -17,14 +17,15 @@ import { overlayVisibleSlots } from "../features/cvReadProgress";
 
 export default function CvReadOverlay() {
   const { t } = useTranslation();
-  const { open, progress } = useSyncExternalStore(
+  const { open, mode, progress } = useSyncExternalStore(
     (listener) => programming.subscribeReadBusy(listener),
     () => programming.getReadOverlay(),
-    () => ({ open: false, progress: null }),
+    () => ({ open: false, mode: "read" as const, progress: null }),
   );
+  const write = mode === "write";
+  const prefix = write ? "writeOverlay" : "readOverlay";
   const streaming = Boolean(progress?.streaming);
-  const readingCv =
-    progress?.slots.find((s) => s.status === "reading")?.cv ?? progress?.current ?? null;
+  const readingCv = progress?.current ?? null;
   const visible = progress ? overlayVisibleSlots(progress) : [];
   const bar =
     streaming && progress && progress.total > 0
@@ -32,16 +33,29 @@ export default function CvReadOverlay() {
       : 0;
 
   return (
-    <Backdrop
+    <Modal
       open={open}
-      sx={{ zIndex: (theme) => theme.zIndex.modal + 2, bgcolor: "rgba(16, 31, 51, 0.72)" }}
+      aria-modal
+      aria-labelledby="cv-overlay-title"
+      onClose={(_event, reason) => {
+        if (reason === "backdropClick") return;
+        programming.cancelReads();
+      }}
+      slotProps={{
+        backdrop: { sx: { bgcolor: "rgba(16, 31, 51, 0.72)" } },
+      }}
+      sx={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
     >
       <Paper sx={{ px: { xs: 3, sm: 5 }, py: { xs: 3, sm: 4 }, minWidth: { sm: 360 }, maxWidth: 480 }}>
         <Stack spacing={2} alignItems="center">
-          {streaming ? (
+          {streaming && !write ? (
             <>
-              <Typography sx={{ fontSize: "1.35rem", fontWeight: 500 }}>
-                {t("readOverlay.message")}
+              <Typography id="cv-overlay-title" sx={{ fontSize: "1.35rem", fontWeight: 500 }}>
+                {t(`${prefix}.message`)}
               </Typography>
               {readingCv !== null ? (
                 <Typography color="text.secondary">
@@ -49,7 +63,7 @@ export default function CvReadOverlay() {
                 </Typography>
               ) : null}
               {progress ? (
-                <Typography>
+                <Typography aria-live="polite">
                   {t("readOverlay.progress", { done: progress.done, total: progress.total })}
                 </Typography>
               ) : null}
@@ -81,16 +95,21 @@ export default function CvReadOverlay() {
           ) : (
             <>
               <CircularProgress />
-              <Typography sx={{ fontSize: "1.35rem", fontWeight: 500 }}>
-                {t("readOverlay.message")}
+              <Typography id="cv-overlay-title" sx={{ fontSize: "1.35rem", fontWeight: 500 }}>
+                {t(`${prefix}.message`)}
               </Typography>
             </>
           )}
-          <Button variant="outlined" onClick={() => programming.cancelReads()}>
-            {t("readOverlay.cancel")}
+          <Button
+            variant="outlined"
+            size="large"
+            sx={{ minHeight: 48, minWidth: 160 }}
+            onClick={() => programming.cancelReads()}
+          >
+            {t(`${prefix}.cancel`)}
           </Button>
         </Stack>
       </Paper>
-    </Backdrop>
+    </Modal>
   );
 }

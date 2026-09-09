@@ -14,10 +14,13 @@ import FullscreenIcon from "@mui/icons-material/Fullscreen";
 import FullscreenExitIcon from "@mui/icons-material/FullscreenExit";
 import LogoutIcon from "@mui/icons-material/Logout";
 import MenuIcon from "@mui/icons-material/Menu";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
 import type { CommandStation, Track } from "../api/types";
+import { useCvRegistry } from "../cv/CvRegistry";
+import { useConfirm } from "./ConfirmDialog";
 import {
   LANGUAGE_FLAG_ICONS,
   LANGUAGE_LABELS,
@@ -66,6 +69,47 @@ export default function Header({
   const { t } = useTranslation();
   const [params, setParams] = useSearchParams();
   const query = readQuery(params);
+  const { diffs } = useCvRegistry();
+  const { confirm, dialog } = useConfirm();
+  const [addrDraft, setAddrDraft] = useState(query.address);
+
+  useEffect(() => {
+    setAddrDraft(query.address);
+  }, [query.address]);
+
+  const guardUnsaved = async (): Promise<boolean> => {
+    if (diffs.length === 0) return true;
+    return confirm({
+      title: t("changes.confirmDiscardTitle"),
+      body: t("changes.confirmDiscardBody"),
+      danger: true,
+    });
+  };
+
+  const changeStation = async (value: string) => {
+    if (value === query.station) return;
+    if (!(await guardUnsaved())) return;
+    setParams(withQuery(params, { station: value || null }));
+  };
+
+  const commitAddress = async () => {
+    const next = addrDraft || "0";
+    if (next === query.address) return;
+    if (!(await guardUnsaved())) {
+      setAddrDraft(query.address);
+      return;
+    }
+    setParams(withQuery(params, { address: next }));
+  };
+
+  const requestLogout = async () => {
+    const ok = await confirm({
+      title: t("app.confirmLogoutTitle"),
+      body: t("app.confirmLogoutBody"),
+      danger: true,
+    });
+    if (ok) onLogout();
+  };
 
   return (
     <>
@@ -111,7 +155,7 @@ export default function Header({
               {fullscreen ? <FullscreenExitIcon /> : <FullscreenIcon />}
             </IconButton>
           </Tooltip>
-          <Button color="inherit" startIcon={<LogoutIcon />} onClick={onLogout} aria-label={t("app.logoutReset")}>
+          <Button color="inherit" startIcon={<LogoutIcon />} onClick={() => void requestLogout()} aria-label={t("app.logoutReset")}>
             {t("app.logoutReset")}
           </Button>
         </Toolbar>
@@ -136,9 +180,7 @@ export default function Header({
                   select
                   hiddenLabel
                   value={query.station}
-                  onChange={(e) =>
-                    setParams(withQuery(params, { station: e.target.value || null }))
-                  }
+                  onChange={(e) => void changeStation(e.target.value)}
                   InputProps={{
                     startAdornment: (
                       <InputAdornment position="start">{t("app.station")}</InputAdornment>
@@ -159,8 +201,14 @@ export default function Header({
               <TextField
                 type="number"
                 hiddenLabel
-                value={query.address}
-                onChange={(e) => setParams(withQuery(params, { address: e.target.value || "0" }))}
+                value={addrDraft}
+                onChange={(e) => setAddrDraft(e.target.value)}
+                onBlur={() => void commitAddress()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    (e.target as HTMLInputElement).blur();
+                  }
+                }}
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">{t("app.address")}</InputAdornment>
@@ -186,6 +234,7 @@ export default function Header({
           </Tabs>
         </AppBar>
       )}
+      {dialog}
     </>
   );
 }

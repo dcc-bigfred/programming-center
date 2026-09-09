@@ -41,7 +41,7 @@ export default function CallbackPage() {
     sessionStorage.removeItem(STATE_KEY);
     api
       .exchangeCode(code, redirectUri, state ?? undefined)
-      .then((res) => adoptToken(res.accessToken))
+      .then((res) => adoptToken(res.accessToken, res.expiresAt))
       .then(() => navigate("/", { replace: true }))
       .catch((err) => setError(err));
   }, [ready, params, redirectUri, adoptToken, navigate, t, config]);

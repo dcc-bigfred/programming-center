@@ -94,16 +94,18 @@ export default function SpeedPage() {
         {error ? <ErrorAlert error={error} /> : null}
         {SPEED_CVS.map(({ cv, key }) => {
           const max = maxFor(cv);
-          const value = registry.get(cv) ?? 0;
+          const known = registry.get(cv);
+          const value = known ?? 0;
           return (
             <Box key={cv}>
               <Typography gutterBottom>
-                {t(key)} — {value}
+                {known === undefined ? t("speed.notReadYet") : `${t(key)} — ${value}`}
               </Typography>
               <Slider
                 min={0}
                 max={max}
                 value={value}
+                disabled={known === undefined}
                 onChange={(_, v) => {
                   const n = Array.isArray(v) ? v[0] : v;
                   registry.set(cv, n);

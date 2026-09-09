@@ -63,10 +63,25 @@ theme = createTheme(theme, {
         paper: { backgroundColor: drawerBg },
       },
     },
+    MuiTab: {
+      styleOverrides: {
+        root: {
+          textTransform: "none",
+          margin: "0 16px",
+          minWidth: 48,
+          minHeight: 48,
+          padding: theme.spacing(1, 0),
+          [theme.breakpoints.up("md")]: {
+            padding: theme.spacing(1, 0),
+            minWidth: 48,
+          },
+        },
+      },
+    },
     MuiButton: {
       defaultProps: { disableElevation: true },
       styleOverrides: {
-        root: { textTransform: "none" },
+        root: { textTransform: "none", minHeight: 44 },
         contained: {
           boxShadow: "none",
           "&:active": { boxShadow: "none" },
@@ -84,23 +99,14 @@ theme = createTheme(theme, {
         },
       },
     },
-    MuiTab: {
-      styleOverrides: {
-        root: {
-          textTransform: "none",
-          margin: "0 16px",
-          minWidth: 0,
-          padding: 0,
-          [theme.breakpoints.up("md")]: {
-            padding: 0,
-            minWidth: 0,
-          },
-        },
-      },
-    },
     MuiIconButton: {
       styleOverrides: {
-        root: { padding: theme.spacing(1) },
+        root: { padding: theme.spacing(1.5), minWidth: 44, minHeight: 44 },
+      },
+    },
+    MuiSlider: {
+      styleOverrides: {
+        thumb: { width: 28, height: 28 },
       },
     },
     MuiTooltip: {

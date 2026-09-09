@@ -7,6 +7,7 @@ use dcc_bigfred_proto_z21 as z21;
 use tokio::net::UdpSocket;
 use tokio::sync::Mutex;
 use tokio::time::{timeout, Instant};
+use tokio_util::sync::CancellationToken;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 const HELLO_TIMEOUT: Duration = Duration::from_secs(3);
@@ -21,6 +22,8 @@ pub enum CvError {
     Nack,
     #[error("decoder short circuit")]
     ShortCircuit,
+    #[error("cancelled")]
+    Cancelled,
 }
 
 pub struct Z21Client {
@@ -61,35 +64,77 @@ impl Z21Client {
         }
     }
 
-    pub async fn read_cv(&self, cv: u16) -> Result<u8, CvError> {
+    pub async fn read_cv(
+        &self,
+        cv: u16,
+        cancel: Option<&CancellationToken>,
+    ) -> Result<u8, CvError> {
         let _g = self.io.lock().await;
-        self.await_result(&z21::Command::CvRead { cv }, cv).await
-    }
-
-    pub async fn write_cv(&self, cv: u16, value: u8) -> Result<u8, CvError> {
-        let _g = self.io.lock().await;
-        self.await_result(&z21::Command::CvWrite { cv, value }, cv)
+        self.read_once_or_retry(&z21::Command::CvRead { cv }, cv, cancel)
             .await
     }
 
-    pub async fn read_cv_pom(&self, addr: u16, cv: u16) -> Result<u8, CvError> {
+    pub async fn write_cv(
+        &self,
+        cv: u16,
+        value: u8,
+        cancel: Option<&CancellationToken>,
+    ) -> Result<u8, CvError> {
         let _g = self.io.lock().await;
-        self.await_result(&z21::Command::PomRead { addr, cv }, cv)
+        self.read_once_or_retry(&z21::Command::CvWrite { cv, value }, cv, cancel)
             .await
     }
 
-    pub async fn write_cv_pom(&self, addr: u16, cv: u16, value: u8) -> Result<(), CvError> {
+    pub async fn read_cv_pom(
+        &self,
+        addr: u16,
+        cv: u16,
+        cancel: Option<&CancellationToken>,
+    ) -> Result<u8, CvError> {
         let _g = self.io.lock().await;
+        self.read_once_or_retry(&z21::Command::PomRead { addr, cv }, cv, cancel)
+            .await
+    }
+
+    pub async fn write_cv_pom(
+        &self,
+        addr: u16,
+        cv: u16,
+        value: u8,
+        cancel: Option<&CancellationToken>,
+    ) -> Result<(), CvError> {
+        let _g = self.io.lock().await;
+        if cancel.is_some_and(CancellationToken::is_cancelled) {
+            return Err(CvError::Cancelled);
+        }
         let pkt = self.encode(&z21::Command::PomWrite { addr, cv, value })?;
         tracing::debug!(peer = %self.peer, addr, cv, value, len = pkt.len(), "z21 pom write tx");
         self.sock.send(pkt.as_slice()).await?;
         Ok(())
     }
 
+    async fn read_once_or_retry(
+        &self,
+        cmd: &z21::Command,
+        cv: u16,
+        cancel: Option<&CancellationToken>,
+    ) -> Result<u8, CvError> {
+        match self.await_result(cmd, cv, cancel).await {
+            Err(CvError::Timeout(_)) => self.await_result(cmd, cv, cancel).await,
+            other => other,
+        }
+    }
+
     fn encode(&self, cmd: &z21::Command) -> Result<z21::WireBuf, CvError> {
         let mut out = z21::WireBuf::new();
         self.codec.encode(cmd, &mut out).map_err(map_encode)?;
         Ok(out)
+    }
+
+    /// Drop leftover datagrams so a late NACK is not counted as the next CV.
+    fn drain(&self) {
+        let mut sink = [0u8; 1500];
+        while self.sock.try_recv(&mut sink).is_ok() {}
     }
 
     async fn hello(&self) -> Result<u32, CvError> {
@@ -120,7 +165,12 @@ impl Z21Client {
         }
     }
 
-    async fn await_result(&self, cmd: &z21::Command, cv: u16) -> Result<u8, CvError> {
+    async fn await_result(
+        &self,
+        cmd: &z21::Command,
+        cv: u16,
+        cancel: Option<&CancellationToken>,
+    ) -> Result<u8, CvError> {
         let pkt = self.encode(cmd)?;
         tracing::debug!(
             peer = %self.peer,
@@ -133,21 +183,48 @@ impl Z21Client {
         let deadline = Instant::now() + self.timeout;
         let mut buf = [0u8; 1500];
         loop {
+            if cancel.is_some_and(CancellationToken::is_cancelled) {
+                self.drain();
+                return Err(CvError::Cancelled);
+            }
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
                 tracing::warn!(peer = %self.peer, cv, cmd = %cmd_label(cmd), "z21 cv timeout");
+                self.drain();
                 return Err(CvError::Timeout("CV reply"));
             }
-            let n = match timeout(remaining, self.sock.recv(&mut buf)).await {
-                Ok(Ok(n)) => n,
-                Ok(Err(err)) => {
-                    tracing::warn!(peer = %self.peer, cv, error = %err, "z21 cv recv failed");
-                    return Err(err.into());
-                }
-                Err(_) => {
-                    tracing::warn!(peer = %self.peer, cv, cmd = %cmd_label(cmd), "z21 cv timeout");
-                    return Err(CvError::Timeout("CV reply"));
-                }
+            let recv = timeout(remaining, self.sock.recv(&mut buf));
+            let n = match cancel {
+                Some(token) => tokio::select! {
+                    () = token.cancelled() => {
+                        self.drain();
+                        return Err(CvError::Cancelled);
+                    }
+                    got = recv => match got {
+                        Ok(Ok(n)) => n,
+                        Ok(Err(err)) => {
+                            tracing::warn!(peer = %self.peer, cv, error = %err, "z21 cv recv failed");
+                            return Err(err.into());
+                        }
+                        Err(_) => {
+                            tracing::warn!(peer = %self.peer, cv, cmd = %cmd_label(cmd), "z21 cv timeout");
+                            self.drain();
+                            return Err(CvError::Timeout("CV reply"));
+                        }
+                    },
+                },
+                None => match recv.await {
+                    Ok(Ok(n)) => n,
+                    Ok(Err(err)) => {
+                        tracing::warn!(peer = %self.peer, cv, error = %err, "z21 cv recv failed");
+                        return Err(err.into());
+                    }
+                    Err(_) => {
+                        tracing::warn!(peer = %self.peer, cv, cmd = %cmd_label(cmd), "z21 cv timeout");
+                        self.drain();
+                        return Err(CvError::Timeout("CV reply"));
+                    }
+                },
             };
             tracing::debug!(
                 peer = %self.peer,

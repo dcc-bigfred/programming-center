@@ -5,6 +5,7 @@ import {
   expandCvList,
   overlayVisibleSlots,
   OVERLAY_WINDOW,
+  progressSlots,
   progressValue,
 } from "./cvReadProgress";
 
@@ -22,16 +23,16 @@ describe("cvReadProgress", () => {
 
   it("marks reading then ok / failed and exposes live values", () => {
     let state = createProgressState("r1", [33, 34, 35], true);
-    expect(state.slots.map((s) => s.status)).toEqual(["pending", "pending", "pending"]);
+    expect(progressSlots(state).map((s) => s.status)).toEqual(["pending", "pending", "pending"]);
     state = applyProgressFrame(state, { total: 3, done: 0, current: 33 });
     expect(state.streaming).toBe(true);
-    expect(state.slots[0]?.status).toBe("reading");
+    expect(progressSlots(state)[0]?.status).toBe("reading");
     expect(progressValue({ total: 3, done: 1, cv: 33, value: 4 })).toEqual({ cv: 33, value: 4 });
     state = applyProgressFrame(state, { total: 3, done: 1, cv: 33, value: 4 });
-    expect(state.slots[0]?.status).toBe("ok");
+    expect(progressSlots(state)[0]?.status).toBe("ok");
     expect(state.done).toBe(1);
     state = applyProgressFrame(state, { total: 3, done: 2, cv: 34, failed: true });
-    expect(state.slots[1]?.status).toBe("failed");
+    expect(progressSlots(state)[1]?.status).toBe("failed");
     expect(progressValue({ total: 3, done: 2, cv: 34, failed: true })).toBeNull();
   });
 

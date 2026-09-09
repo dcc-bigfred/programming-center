@@ -5,6 +5,7 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
   type ReactNode,
@@ -45,6 +46,7 @@ interface CvRegistryValue {
   apply: () => Promise<void>;
   applyBusy: boolean;
   applyError: unknown;
+  applyFailed: number[];
   addressError: unknown;
   formatDiffs: (diffs: CvDiff[]) => string;
 }
@@ -58,7 +60,9 @@ export function CvRegistryProvider({ children }: { children: ReactNode }) {
   const snap = useSyncExternalStore(subscribeCvTable, getCvSnapshot, getCvSnapshot);
   const [applyBusy, setApplyBusy] = useState(false);
   const [applyError, setApplyError] = useState<unknown>(null);
+  const [applyFailed, setApplyFailed] = useState<number[]>([]);
   const [addressError, setAddressError] = useState<unknown>(null);
+  const applying = useRef(false);
 
   const session = useMemo(
     () => ({
@@ -129,17 +133,32 @@ export function CvRegistryProvider({ children }: { children: ReactNode }) {
 
   const diffs = useMemo(() => cvDiffs(snap), [snap]);
 
+  useEffect(() => {
+    if (diffs.length === 0) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [diffs.length]);
+
   const apply = useCallback(async () => {
     const pending = cvDiffs();
     if (pending.length === 0) return;
+    if (applying.current) return;
+    applying.current = true;
     setApplyBusy(true);
     setApplyError(null);
+    setApplyFailed([]);
     try {
-      const written = await programming.cvWrite({
-        ...session,
-        cvs: pending,
-      });
-      rememberRead(written.cvs.length > 0 ? written.cvs : pending);
+      const written = await programming.withOverlay({ mode: "write" }, (signal) =>
+        programming.cvWrite({ ...session, cvs: pending, signal }),
+      );
+      const failed = new Set(written.errors);
+      const confirmed =
+        written.cvs.length > 0 ? written.cvs : pending.filter((d) => !failed.has(d.cv));
+      rememberRead(confirmed);
+      setApplyFailed(written.errors);
       const touched = new Set(pending.map((d) => d.cv));
       if (touched.has(1) || touched.has(17) || touched.has(18)) {
         const decoder = getDecoder(query.decoder);
@@ -159,18 +178,19 @@ export function CvRegistryProvider({ children }: { children: ReactNode }) {
       setApplyError(err);
       throw err;
     } finally {
+      applying.current = false;
       setApplyBusy(false);
     }
   }, [session, query.decoder, params, setParams]);
 
   const ensureRead = useCallback(
     async (cvs: number[], signal?: AbortSignal) => {
-      const missing = cvs.filter((cv) => getCv(cv) === undefined);
-      if (missing.length === 0) return;
+      if (cvs.every((cv) => getCv(cv) !== undefined)) return;
       const { cvs: got } = await programming.cvRead({
         ...session,
-        cvs: missing,
+        cvs: cvs.filter((cv) => getCv(cv) === undefined),
         signal,
+        stillMissing: () => cvs.filter((cv) => getCv(cv) === undefined),
       });
       rememberRead(got);
     },
@@ -190,10 +210,11 @@ export function CvRegistryProvider({ children }: { children: ReactNode }) {
       apply,
       applyBusy,
       applyError,
+      applyFailed,
       addressError,
       formatDiffs: formatCvDiffs,
     }),
-    [diffs, apply, applyBusy, applyError, addressError, ensureRead],
+    [diffs, apply, applyBusy, applyError, applyFailed, addressError, ensureRead],
   );
 
   return <CvRegistryContext.Provider value={value}>{children}</CvRegistryContext.Provider>;

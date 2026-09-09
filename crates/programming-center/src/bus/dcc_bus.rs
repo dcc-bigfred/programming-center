@@ -5,6 +5,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::json;
 
+use tokio_util::sync::CancellationToken;
+
 use pc_core::{CvBatch, CvEntry, Track};
 
 use crate::error::ApiError;
@@ -45,7 +47,11 @@ impl ProgrammingBus for DccBusProgrammer {
         address: u16,
         cvs: &[u16],
         track: Track,
+        cancel: Option<&CancellationToken>,
     ) -> Result<CvBatch, ApiError> {
+        if cancel.is_some_and(CancellationToken::is_cancelled) {
+            return Err(ApiError::cancelled());
+        }
         let token = require_token(token)?;
         let station = require_station(station_id)?;
         for cv in cvs {
@@ -76,7 +82,11 @@ impl ProgrammingBus for DccBusProgrammer {
         address: u16,
         cvs: &[CvEntry],
         track: Track,
+        cancel: Option<&CancellationToken>,
     ) -> Result<CvBatch, ApiError> {
+        if cancel.is_some_and(CancellationToken::is_cancelled) {
+            return Err(ApiError::cancelled());
+        }
         let token = require_token(token)?;
         let station = require_station(station_id)?;
         for e in cvs {
@@ -106,6 +116,7 @@ impl ProgrammingBus for DccBusProgrammer {
 }
 
 fn batch_from_ack(ack: &bigfred_client::Ack, fallback: &[CvEntry]) -> CvBatch {
+    let errors = ack.errors.clone().unwrap_or_default();
     let cvs = if let Some(got) = &ack.cvs {
         got.iter()
             .map(|e| CvEntry {
@@ -113,11 +124,55 @@ fn batch_from_ack(ack: &bigfred_client::Ack, fallback: &[CvEntry]) -> CvBatch {
                 value: e.value,
             })
             .collect()
-    } else {
+    } else if errors.is_empty() {
         fallback.to_vec()
+    } else {
+        fallback
+            .iter()
+            .filter(|e| !errors.contains(&e.cv))
+            .copied()
+            .collect()
     };
-    CvBatch {
-        cvs,
-        errors: Vec::new(),
+    CvBatch { cvs, errors }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ack(cvs: Option<Vec<CvEntry>>, errors: Option<Vec<u16>>) -> bigfred_client::Ack {
+        bigfred_client::Ack {
+            ok: true,
+            error: None,
+            cvs: cvs.map(|list| {
+                list.into_iter()
+                    .map(|e| bigfred_client::CvEntry {
+                        cv: e.cv,
+                        value: e.value,
+                    })
+                    .collect()
+            }),
+            errors,
+            loco_address: None,
+            long_address: None,
+        }
+    }
+
+    #[test]
+    fn keeps_per_cv_errors() {
+        let got = batch_from_ack(
+            &ack(Some(vec![CvEntry { cv: 33, value: 4 }]), Some(vec![34])),
+            &[],
+        );
+        assert_eq!(got.cvs, vec![CvEntry { cv: 33, value: 4 }]);
+        assert_eq!(got.errors, vec![34]);
+    }
+
+    #[test]
+    fn write_fallback_skips_failed_slots() {
+        let fallback = [CvEntry { cv: 1, value: 3 }, CvEntry { cv: 2, value: 10 }];
+        let got = batch_from_ack(&ack(None, Some(vec![2])), &fallback);
+        assert_eq!(got.cvs, vec![CvEntry { cv: 1, value: 3 }]);
+        assert_eq!(got.errors, vec![2]);
     }
 }

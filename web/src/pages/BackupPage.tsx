@@ -16,6 +16,7 @@ import { isCancelled } from "../api/client";
 import { programming } from "../api/ws";
 import { useAuth } from "../auth/AuthContext";
 import AppShell from "../components/AppShell";
+import { useConfirm } from "../components/ConfirmDialog";
 import ErrorAlert from "../components/ErrorAlert";
 import {
   BACKUP_CV_MAX,
@@ -37,6 +38,7 @@ function parseBound(raw: string): number | null {
 export default function BackupPage() {
   const { t } = useTranslation();
   const { config } = useAuth();
+  const { confirm, dialog } = useConfirm();
   const [params] = useSearchParams();
   const query = readQuery(params);
 
@@ -118,8 +120,8 @@ export default function BackupPage() {
     setError(null);
     setRestoreFailed([]);
     try {
-      const { errors } = await programming.withReadOverlay(undefined, () =>
-        programming.cvWrite({ ...session, cvs: parsed.cvs }),
+      const { errors } = await programming.withOverlay({ mode: "write" }, (signal) =>
+        programming.cvWrite({ ...session, cvs: parsed.cvs, signal }),
       );
       setRestoreFailed(errors);
     } catch (err) {
@@ -226,7 +228,20 @@ export default function BackupPage() {
           <Button
             variant="contained"
             disabled={Boolean(parsed.errorLine) || parsed.cvs.length === 0}
-            onClick={() => void restore()}
+            onClick={() => {
+              void (async () => {
+                const ok = await confirm({
+                  title: t("backup.confirmRestoreTitle"),
+                  body: t("backup.confirmRestoreBody", { count: parsed.cvs.length }),
+                  danger: true,
+                  typeToConfirm: {
+                    expected: String(parsed.cvs.length),
+                    label: t("backup.confirmRestoreType", { count: parsed.cvs.length }),
+                  },
+                });
+                if (ok) await restore();
+              })();
+            }}
           >
             {t("backup.startRestore")}
           </Button>
@@ -235,6 +250,7 @@ export default function BackupPage() {
           ) : null}
         </Stack>
       </Stack>
+      {dialog}
     </AppShell>
   );
 }

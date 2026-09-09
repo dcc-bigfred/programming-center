@@ -15,11 +15,13 @@ import MemoryIcon from "@mui/icons-material/Memory";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 
+import { useCvRegistry } from "../cv/CvRegistry";
 import { getDecoder, listDecoders } from "../decoders/registry";
 import { decoderLabelKey } from "../decoders/types";
 import { featuresFor, isFeatureEnabled, listFeatures } from "../features/registry";
 import { optionalT } from "../i18n";
 import { readQuery, withQuery } from "../query";
+import { useConfirm } from "./ConfirmDialog";
 import ChangesPanel from "./ChangesPanel";
 import ChangeListsNav from "./ChangeListsNav";
 
@@ -53,9 +55,26 @@ export default function Navigator({ showSession = true, onNavigate, ...other }: 
   const query = readQuery(params);
   const decoder = getDecoder(query.decoder);
   const features = decoder ? featuresFor(decoder) : listFeatures();
+  const { diffs } = useCvRegistry();
+  const { confirm, dialog } = useConfirm();
+
+  const changeDecoder = async (value: string) => {
+    const next = value || null;
+    if ((next ?? "") === (decoder?.id ?? "")) return;
+    if (diffs.length > 0) {
+      const ok = await confirm({
+        title: t("changes.confirmDiscardTitle"),
+        body: t("changes.confirmDiscardBody"),
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    setParams(withQuery(params, { decoder: next, cv: null }));
+  };
 
   return (
     <Drawer variant="permanent" {...other}>
+      {dialog}
       <List disablePadding>
         <ListItem sx={{ ...item, ...itemCategory, color: "#fff" }}>
           <ListItemIcon sx={{ color: "inherit" }}>
@@ -95,9 +114,7 @@ export default function Navigator({ showSession = true, onNavigate, ...other }: 
                   fullWidth
                   label={t("home.decoder")}
                   value={decoder?.id ?? ""}
-                  onChange={(e) =>
-                    setParams(withQuery(params, { decoder: e.target.value || null, cv: null }))
-                  }
+                  onChange={(e) => void changeDecoder(e.target.value)}
                   sx={{
                     "& .MuiInputBase-root": { color: "#fff" },
                     "& .MuiInputLabel-root": { color: "rgba(255,255,255,0.7)" },
@@ -138,7 +155,13 @@ export default function Navigator({ showSession = true, onNavigate, ...other }: 
                         <ListItemIcon>
                           <Icon />
                         </ListItemIcon>
-                        <ListItemText>{t(`features.${id}`)}</ListItemText>
+                        <ListItemText
+                          primary={t(`features.${id}`)}
+                          secondary={t("nav.featureUnavailable")}
+                          secondaryTypographyProps={{
+                            sx: { color: "rgba(255,255,255,0.35)", fontSize: 11 },
+                          }}
+                        />
                       </ListItemButton>
                     )}
                   </ListItem>

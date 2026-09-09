@@ -1,3 +1,4 @@
+import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Dialog from "@mui/material/Dialog";
@@ -17,6 +18,7 @@ import { useCvRegistry } from "../cv/CvRegistry";
 import { getDecoder } from "../decoders/registry";
 import { createChangeList, notifyChangeListsChanged } from "../features/changelists";
 import { readQuery } from "../query";
+import { useConfirm } from "./ConfirmDialog";
 import ErrorAlert from "./ErrorAlert";
 
 const ghost = {
@@ -27,7 +29,9 @@ const ghost = {
 
 export default function ChangesPanel() {
   const { t } = useTranslation();
-  const { diffs, apply, discard, applyBusy, applyError, formatDiffs } = useCvRegistry();
+  const { diffs, apply, discard, applyBusy, applyError, applyFailed, formatDiffs } =
+    useCvRegistry();
+  const { confirm, dialog } = useConfirm();
   const [params] = useSearchParams();
   const decoder = getDecoder(readQuery(params).decoder);
   const [open, setOpen] = useState(false);
@@ -104,7 +108,16 @@ export default function ChangesPanel() {
           size="small"
           variant="outlined"
           disabled={applyBusy || diffs.length === 0}
-          onClick={() => discard()}
+          onClick={() => {
+            void (async () => {
+              const ok = await confirm({
+                title: t("changes.confirmDiscardTitle"),
+                body: t("changes.confirmDiscardBody"),
+                danger: true,
+              });
+              if (ok) discard();
+            })();
+          }}
           sx={ghost}
         >
           {t("changes.discard")}
@@ -114,6 +127,11 @@ export default function ChangesPanel() {
         <Box sx={{ mt: 1 }}>
           <ErrorAlert error={applyError} />
         </Box>
+      ) : null}
+      {applyFailed.length > 0 ? (
+        <Alert severity="warning" sx={{ mt: 1 }}>
+          {t("changes.applyPartial", { cvs: applyFailed.join(", ") })}
+        </Alert>
       ) : null}
       <Box sx={{ mt: 1.5 }}>
         {diffs.length === 0 ? (
@@ -202,6 +220,7 @@ export default function ChangesPanel() {
           </Button>
         </DialogActions>
       </Dialog>
+      {dialog}
     </Box>
   );
 }
