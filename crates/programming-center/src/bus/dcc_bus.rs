@@ -27,7 +27,7 @@ impl DccBusProgrammer {
 fn require_token(token: Option<&str>) -> Result<&str, ApiError> {
     match token {
         Some(t) if !t.is_empty() => Ok(t),
-        _ => Err(ApiError::unauthorized()),
+        _ => Err(ApiError::auth_required()),
     }
 }
 

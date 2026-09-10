@@ -1,6 +1,6 @@
 import { requestId, ProgrammingClient } from "./ws";
+import { TOKEN_KEY, isCancelled } from "./client";
 import { ensureCvScope, getCv, resetCvTable } from "../cv/table";
-import { isCancelled } from "./client";
 
 class FakeSocket {
   static CONNECTING = 0;
@@ -246,6 +246,30 @@ describe("ProgrammingClient progress", () => {
       railcomPlus: false,
     });
     socket.push("ack", env!.id, { ok: true, cvs: [] });
+    await done;
+  });
+
+  it("does not reconnect with a leftover sessionStorage token", async () => {
+    sessionStorage.setItem(TOKEN_KEY, "leftover-sso");
+    client.connect(null);
+    const socket = FakeSocket.last!;
+    socket.open();
+    await Promise.resolve();
+    expect(JSON.parse(socket.sent[0] as string)).toEqual({
+      type: "auth",
+      payload: { token: null },
+    });
+
+    const done = client.cvRead({ address: 3, track: "prog", cvs: [2] });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(FakeSocket.last).toBe(socket);
+    const env = [...socket.sent]
+      .reverse()
+      .map((raw) => JSON.parse(raw as string) as { id: string; type: string })
+      .find((e) => e.type === "cv.read");
+    expect(env).toBeDefined();
+    socket.push("ack", env!.id, { ok: true, cvs: [{ cv: 2, value: 40 }] });
     await done;
   });
 });

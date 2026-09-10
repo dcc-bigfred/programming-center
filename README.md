@@ -53,18 +53,21 @@ to `http` / CORS need a process restart.
   ],
   "corsEnabled": false,
   "corsOrigins": [],
-  "idleTimeoutSecs": 86400
+  "idleTimeoutSecs": 86400,
+  "pomWriteRepeat": true
 }
 ```
 
 - `mode: "bigfred"` — SSO, proxy, command-station picker (BigFred login).
-- `mode: "standalone"` — no BigFred sign-in or proxy.
-- `programmingMode: "bigfred"` (default) — CV via dcc-bus.
+- `mode: "standalone"` — no BigFred sign-in or proxy. CV traffic always
+  goes to Z21 (`z21.hostname:port`); dcc-bus needs a layout session that
+  standalone does not have.
+- `programmingMode: "bigfred"` (default with SSO) — CV via dcc-bus.
 - `programmingMode: "z21"` — CV via UDP to `z21.hostname:port`. Works with
-  either SSO mode, so BigFred login can sit in front of a direct Z21.
-
-Existing standalone kiosks that talk to a Z21 must set
-`"programmingMode": "z21"` (the default is now dcc-bus).
+  BigFred login in front of a direct Z21.
+- `pomWriteRepeat: true` (default) — send each POM write twice. POM carries
+  no acknowledgement, so a dropped packet is otherwise silent. Set `false`
+  for exactly one packet per write.
 
 `bigfred.address` is `host:port` without a scheme. The daemon adds `http://`
 and `ws://`.

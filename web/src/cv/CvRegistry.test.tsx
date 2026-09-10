@@ -202,6 +202,40 @@ describe("CvRegistryProvider", () => {
     });
   });
 
+  it("apply writes CV 29 before CV 6 on loksound-v5", async () => {
+    renderRegistry("?decoder=loksound-v5&address=5&track=prog");
+    act(() => {
+      rememberRead([
+        { cv: 6, value: 151 },
+        { cv: 29, value: 62 },
+      ]);
+      setCv(6, 58);
+      setCv(29, 46);
+    });
+    cvWrite.mockResolvedValue({
+      cvs: [
+        { cv: 29, value: 46 },
+        { cv: 6, value: 58 },
+      ],
+      errors: [],
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("diffs")).toHaveTextContent("CV6=58");
+    });
+    fireEvent.click(screen.getByText("apply"));
+    await waitFor(() => {
+      expect(cvWrite).toHaveBeenCalled();
+    });
+    expect(cvWrite.mock.calls[0]?.[0]).toMatchObject({
+      track: "prog",
+      address: 5,
+      cvs: [
+        { cv: 29, value: 46 },
+        { cv: 6, value: 58 },
+      ],
+    });
+  });
+
   it("retargets the session address after applying a new short address", async () => {
     renderRegistry("?decoder=nmra&address=5&track=prog");
     act(() => {

@@ -18,6 +18,8 @@ import { useAuth } from "../auth/AuthContext";
 import AppShell from "../components/AppShell";
 import { useConfirm } from "../components/ConfirmDialog";
 import ErrorAlert from "../components/ErrorAlert";
+import { getDecoder } from "../decoders/registry";
+import { sortCvDiffsForWrite } from "../decoders/types";
 import {
   BACKUP_CV_MAX,
   BACKUP_DEFAULT_FROM,
@@ -120,8 +122,9 @@ export default function BackupPage() {
     setError(null);
     setRestoreFailed([]);
     try {
+      const cvs = sortCvDiffsForWrite(parsed.cvs, getDecoder(query.decoder));
       const { errors } = await programming.withOverlay({ mode: "write" }, (signal) =>
-        programming.cvWrite({ ...session, cvs: parsed.cvs, signal }),
+        programming.cvWrite({ ...session, cvs, signal }),
       );
       setRestoreFailed(errors);
     } catch (err) {

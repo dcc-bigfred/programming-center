@@ -68,8 +68,9 @@ impl Z21Programmer {
         drop(cfg);
         if !z21.is_configured() {
             tracing::warn!("z21 hostname/port missing");
-            return Err(ApiError::unavailable("z21_not_configured")
-                .with_detail("z21.hostname and z21.port are required when programmingMode is z21"));
+            return Err(ApiError::unavailable("z21_not_configured").with_detail(
+                "z21.hostname and z21.port are required when programmingMode is z21",
+            ));
         }
         let host = z21.hostname.trim().to_string();
         let gen = self.generation.load(Ordering::Acquire);
@@ -306,6 +307,7 @@ impl ProgrammingBus for Z21Programmer {
     ) -> Result<CvBatch, ApiError> {
         let session = self.session(cancel).await?;
         let pom = track.is_pom();
+        let pom_repeat = self.cfg.read().await.pom_write_repeat;
         let mut out = CvBatch::default();
         let mut drop_session: Option<ApiError> = None;
         let mut timeouts = 0u8;
@@ -332,7 +334,7 @@ impl ProgrammingBus for Z21Programmer {
             }
             let result = if pom {
                 client
-                    .write_cv_pom(address, entry.cv, entry.value, cancel)
+                    .write_cv_pom(address, entry.cv, entry.value, pom_repeat, cancel)
                     .await
                     .map(|_| entry.value)
             } else {

@@ -134,6 +134,7 @@
       "cab": "Kabina (CV 3 / 4)",
       "brakeFn": "Hamulec {{n}}",
       "threeNote": "Zachowaj CV 2 < CV 6 < CV 5.",
+      "threePointVariantHint": "Nie każdy wariant dekodera LokSound obsługuje krzywą 3-punktową. Jeśli po zapisie ustawienia wrócą do poprzednich lub zapis się nie powiedzie, użyj krzywej 28-punktowej.",
       "tableNote": "CV 67 = 1 i CV 94 = 255 są stałe. CV 2 i CV 5 skalują krzywą (Vmin / Vmax).",
       "accelNote": "CV 3 × 0,896 s od postoju do Vmax (LokSound 5 DCC). CV 23 koryguje czas. Droga rośnie z prędkością.",
       "brakeNote": "CV 4 × 0,896 s. CV 24 koryguje czas. Funkcje hamulca skracają CV 4 i mogą ograniczyć prędkość, gdy są włączone."
@@ -410,6 +411,7 @@
   "errors": {
     "generic": "Coś poszło nie tak.",
     "unauthorized": "Sesja wygasła — zaloguj się ponownie.",
+    "auth_required": "Zaloguj się przez BigFred, żeby programować przez dcc-bus.",
     "forbidden": "Brak uprawnień.",
     "dcc_bus_unavailable": "Brak połączenia z centralą (dcc-bus). Otwórz makietę w BigFredzie.",
     "no_programming_station": "Żadna centrala nie ma włączonego programowania.",

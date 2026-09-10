@@ -113,20 +113,35 @@ impl Z21Client {
             .await
     }
 
+    /// POM writes are fire-and-forget — the Z21 broadcasts the DCC packet on
+    /// the main track and the decoder may miss it. With `repeat` the packet
+    /// goes out twice with a short gap, so a lost packet is not silent.
     pub async fn write_cv_pom(
         &self,
         addr: u16,
         cv: u16,
         value: u8,
+        repeat: bool,
         cancel: Option<&CancellationToken>,
     ) -> Result<(), CvError> {
+        const GAP: Duration = Duration::from_millis(50);
+        let repeats: u8 = if repeat { 2 } else { 1 };
         let _g = self.slot.lock().await;
-        if cancel.is_some_and(CancellationToken::is_cancelled) {
-            return Err(CvError::Cancelled);
-        }
         let pkt = self.encode(&z21::Command::PomWrite { addr, cv, value })?;
-        tracing::debug!(peer = %self.peer, addr, cv, value, len = pkt.len(), "z21 pom write tx");
-        self.sock.send(pkt.as_slice()).await?;
+        for attempt in 0..repeats {
+            if cancel.is_some_and(CancellationToken::is_cancelled) {
+                return Err(CvError::Cancelled);
+            }
+            tracing::debug!(
+                peer = %self.peer, addr, cv, value, len = pkt.len(), attempt,
+                pkt = %hex_preview(pkt.as_slice()),
+                "z21 pom write tx"
+            );
+            self.sock.send(pkt.as_slice()).await?;
+            if attempt + 1 < repeats {
+                tokio::time::sleep(GAP).await;
+            }
+        }
         Ok(())
     }
 
@@ -272,6 +287,7 @@ impl Z21Client {
             cv,
             cmd = %cmd_label(cmd),
             len = pkt.len(),
+            pkt = %hex_preview(pkt.as_slice()),
             "z21 cv tx"
         );
         self.sock.send(pkt.as_slice()).await?;

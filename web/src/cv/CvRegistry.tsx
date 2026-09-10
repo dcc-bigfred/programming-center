@@ -16,6 +16,7 @@ import { ApiError, isCancelled } from "../api/client";
 import { programming } from "../api/ws";
 import { useAuth } from "../auth/AuthContext";
 import { getDecoder } from "../decoders/registry";
+import { sortCvDiffsForWrite } from "../decoders/types";
 import { ADDRESS_CVS, decodeAddress, decodeAddressFromCvs } from "../features/dccAddress";
 import { addressNumber, readQuery, stationNumber, withQuery } from "../query";
 import {
@@ -150,7 +151,7 @@ export function CvRegistryProvider({ children }: { children: ReactNode }) {
   }, [diffs.length, indexedDirty]);
 
   const apply = useCallback(async () => {
-    const pending = cvDiffs();
+    const pending = sortCvDiffsForWrite(cvDiffs(), getDecoder(query.decoder));
     if (pending.length === 0) return;
     if (applying.current) return;
     applying.current = true;

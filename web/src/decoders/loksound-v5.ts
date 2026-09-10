@@ -691,6 +691,10 @@ export const loksoundV5: DecoderProfile = {
   id: "loksound-v5",
   features: ["cv", "speed", "address", "volume", "mapping"],
   cvs: [...loksoundV5Cvs].sort((a, b) => a.cv - b.cv),
+  writePriority: [
+    [29],
+    [2, 5, 6],
+  ],
 };
 
 export const loksoundV4: DecoderProfile = {

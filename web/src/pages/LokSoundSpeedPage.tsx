@@ -1,3 +1,4 @@
+import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Paper from "@mui/material/Paper";
@@ -274,6 +275,10 @@ export default function LokSoundSpeedPage({
         <ToggleButton value="three">{t("speed.esu.threePoint")}</ToggleButton>
         <ToggleButton value="table">{t("speed.esu.table28")}</ToggleButton>
       </ToggleButtonGroup>
+
+      {mode === "three" ? (
+        <Alert severity="info">{t("speed.esu.threePointVariantHint")}</Alert>
+      ) : null}
 
       <Paper variant="outlined" sx={{ p: 2 }}>
         <Typography variant="h6" sx={{ mb: 1 }}>

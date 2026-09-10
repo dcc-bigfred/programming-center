@@ -273,7 +273,7 @@ async fn dispatch(
         TYPE_CV_READ => match serde_json::from_value::<CvReadPayload>(payload) {
             Ok(p) => {
                 let cfg = state.config().await;
-                if cfg.programming_mode.is_z21() {
+                if cfg.cv_bus().is_z21() {
                     cv_read_standalone(state, token, env, cancel, tx).await
                 } else {
                     cv_read(state, token, p, &cancel).await
@@ -292,7 +292,7 @@ async fn dispatch(
         TYPE_ADDRESS_SET => match serde_json::from_value::<AddressSetPayload>(payload) {
             Ok(p) => {
                 let cfg = state.config().await;
-                if !cfg.programming_mode.is_z21() {
+                if !cfg.cv_bus().is_z21() {
                     Ack::fail("z21_required", None)
                 } else {
                     crate::address::set(&cfg, &state.hub, token, p, &cancel).await
@@ -328,7 +328,15 @@ async fn probe_cv1(
     let cfg = state.config().await;
     let batch = state
         .hub
-        .read_cvs(cfg.programming_mode, token, station_id, address, &[1], track, cancel)
+        .read_cvs(
+            cfg.cv_bus(),
+            token,
+            station_id,
+            address,
+            &[1],
+            track,
+            cancel,
+        )
         .await?;
     if let Some(entry) = batch.cvs.iter().find(|e| e.cv == 1) {
         return Ok(entry.value);
@@ -349,11 +357,11 @@ async fn read_chunked(
         return Ok(CvBatch::default());
     }
     let cfg = state.config().await;
-    if cfg.programming_mode.is_z21() || cvs.len() <= DCC_BUS_CHUNK {
+    if cfg.cv_bus().is_z21() || cvs.len() <= DCC_BUS_CHUNK {
         return state
             .hub
             .read_cvs(
-                cfg.programming_mode,
+                cfg.cv_bus(),
                 token,
                 station_id,
                 address,
@@ -372,7 +380,7 @@ async fn read_chunked(
             state
                 .hub
                 .read_cvs(
-                    cfg.programming_mode,
+                    cfg.cv_bus(),
                     token,
                     station_id,
                     address,
@@ -399,11 +407,11 @@ async fn write_chunked(
         return Ok(CvBatch::default());
     }
     let cfg = state.config().await;
-    if cfg.programming_mode.is_z21() || cvs.len() <= DCC_BUS_CHUNK {
+    if cfg.cv_bus().is_z21() || cvs.len() <= DCC_BUS_CHUNK {
         return state
             .hub
             .write_cvs(
-                cfg.programming_mode,
+                cfg.cv_bus(),
                 token,
                 station_id,
                 address,
@@ -422,7 +430,7 @@ async fn write_chunked(
             state
                 .hub
                 .write_cvs(
-                    cfg.programming_mode,
+                    cfg.cv_bus(),
                     token,
                     station_id,
                     address,
@@ -648,7 +656,7 @@ async fn cv_bitop(
     let read = match state
         .hub
         .read_cvs(
-            cfg.programming_mode,
+            cfg.cv_bus(),
             token,
             p.station_id,
             p.address,
@@ -672,7 +680,7 @@ async fn cv_bitop(
     match state
         .hub
         .write_cvs(
-            cfg.programming_mode,
+            cfg.cv_bus(),
             token,
             p.station_id,
             p.address,

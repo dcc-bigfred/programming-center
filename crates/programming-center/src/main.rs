@@ -104,7 +104,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cors_origins = cfg.cors_origins.clone();
     let enabled = cfg.enabled;
     let mode = cfg.mode;
-    let programming_mode = cfg.programming_mode;
+    let programming_mode = cfg.cv_bus();
     let bigfred = cfg.bigfred_api_base();
     let z21 = format!("{}:{}", cfg.z21.hostname.trim(), cfg.z21.port);
 
@@ -218,7 +218,7 @@ fn spawn_config_reloader(
                     }
                     let view = new_cfg.bigfred_view(&data_dir);
                     let mode = new_cfg.mode;
-                    let programming_mode = new_cfg.programming_mode;
+                    let programming_mode = new_cfg.cv_bus();
                     let z21 = format!("{}:{}", new_cfg.z21.hostname.trim(), new_cfg.z21.port);
                     {
                         let mut guard = cfg.write().await;

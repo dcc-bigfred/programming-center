@@ -47,6 +47,10 @@ impl ApiError {
         Self::new(StatusCode::UNAUTHORIZED, "unauthorized")
     }
 
+    pub fn auth_required() -> Self {
+        Self::new(StatusCode::UNAUTHORIZED, "auth_required")
+    }
+
     pub fn unavailable(code: impl Into<String>) -> Self {
         Self::new(StatusCode::SERVICE_UNAVAILABLE, code)
     }

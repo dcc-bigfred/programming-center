@@ -103,6 +103,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (config && !config.loginRequired) {
+      if (token) {
+        setToken(null);
+        setTokenState(null);
+      }
       programming.connect(null);
       return;
     }

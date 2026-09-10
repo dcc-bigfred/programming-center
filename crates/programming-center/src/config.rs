@@ -129,6 +129,9 @@ pub struct Config {
     pub idle_timeout_secs: u64,
     /// Allow `http://<ip|*.local>:5176/auth/callback` (Vite on LAN). Off in production.
     pub dev_redirect_uris: bool,
+    /// Send each POM write twice. POM has no acknowledgement, so a lost
+    /// packet is otherwise silent. Turn off to send exactly one packet.
+    pub pom_write_repeat: bool,
 }
 
 impl Default for Config {
@@ -148,6 +151,7 @@ impl Default for Config {
             cors_origins: Vec::new(),
             idle_timeout_secs: 86_400,
             dev_redirect_uris: false,
+            pom_write_repeat: true,
         }
     }
 }
@@ -261,12 +265,26 @@ impl Config {
         Ok(cfg)
     }
 
+    /// CV transport actually used for this snapshot.
+    ///
+    /// dcc-bus needs a BigFred layout JWT. Standalone never has one, so
+    /// `programmingMode: bigfred` would only yield `unauthorized`.
+    #[must_use]
+    pub fn cv_bus(&self) -> ProgrammingMode {
+        if self.mode.is_standalone() {
+            ProgrammingMode::Z21
+        } else {
+            self.programming_mode
+        }
+    }
+
     #[must_use]
     pub fn public(&self) -> PublicConfig {
+        let programming_mode = self.cv_bus();
         PublicConfig {
             enabled: self.enabled,
             mode: self.mode,
-            programming_mode: self.programming_mode,
+            programming_mode,
             sso_client_id: self.sso_client_id.clone(),
             redirect_uris: self.redirect_uris.clone(),
             idle_timeout_secs: self.idle_timeout_secs,
@@ -277,7 +295,7 @@ impl Config {
             } else {
                 None
             },
-            z21: if self.programming_mode.is_z21() {
+            z21: if programming_mode.is_z21() {
                 Some(Z21Public {
                     hostname: self.z21.hostname.trim().to_string(),
                     port: self.z21.port,
@@ -389,8 +407,8 @@ mod tests {
         assert!(!p.station_picker);
         assert!(!p.login_required);
         assert!(p.bigfred_public_url.is_none());
-        assert_eq!(p.programming_mode, ProgrammingMode::Bigfred);
-        assert!(p.z21.is_none());
+        assert_eq!(p.programming_mode, ProgrammingMode::Z21);
+        assert_eq!(p.z21.as_ref().map(|z| z.port), Some(21150));
     }
 
     #[test]
@@ -399,7 +417,27 @@ mod tests {
         let cfg: Config = serde_json::from_str(raw).unwrap();
         assert_eq!(cfg.mode, IntegrationMode::Standalone);
         assert_eq!(cfg.programming_mode, ProgrammingMode::Bigfred);
-        assert!(cfg.public().z21.is_none());
+        assert_eq!(cfg.cv_bus(), ProgrammingMode::Z21);
+        assert_eq!(cfg.public().z21.as_ref().map(|z| z.port), Some(21150));
+    }
+
+    #[test]
+    fn pom_write_repeat_defaults_on_and_is_toggleable() {
+        assert!(Config::default().pom_write_repeat);
+        let raw = r#"{"mode":"standalone","pomWriteRepeat":false}"#;
+        let cfg: Config = serde_json::from_str(raw).unwrap();
+        assert!(!cfg.pom_write_repeat);
+    }
+
+    #[test]
+    fn standalone_never_uses_dcc_bus() {
+        let cfg = Config {
+            mode: IntegrationMode::Standalone,
+            programming_mode: ProgrammingMode::Bigfred,
+            ..Config::default()
+        };
+        assert_eq!(cfg.cv_bus(), ProgrammingMode::Z21);
+        assert_eq!(cfg.public().programming_mode, ProgrammingMode::Z21);
     }
 
     #[test]

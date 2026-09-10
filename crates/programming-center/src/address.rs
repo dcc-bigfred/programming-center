@@ -19,9 +19,10 @@ use tokio_util::sync::CancellationToken;
 use pc_core::{
     decode_address, plan_set_writes, CvBatch, CvEntry, PlanSetWrites, Track, LONG_MAX, SETTLE,
 };
-use pc_proto::{Ack, AddressSetPayload, RevertedDetail, CODE_ADDRESS_REVERTED,
-    CODE_CANCELLED, CODE_INVALID_ADDRESS, CODE_INVALID_LONG_BIT, CODE_PC_DISABLED,
-    CODE_PROGRAMMING_FAILED};
+use pc_proto::{
+    Ack, AddressSetPayload, RevertedDetail, CODE_ADDRESS_REVERTED, CODE_CANCELLED,
+    CODE_INVALID_ADDRESS, CODE_INVALID_LONG_BIT, CODE_PC_DISABLED, CODE_PROGRAMMING_FAILED,
+};
 
 use crate::bus::{Hub, Observed};
 use crate::config::{Config, ProgrammingMode};
@@ -117,7 +118,7 @@ pub async fn set(
     if p.long_bit > 7 {
         return Ack::fail(CODE_INVALID_LONG_BIT, None);
     }
-    let mode = cfg.programming_mode;
+    let mode = cfg.cv_bus();
 
     let (cv28, cv29) = match read_cv28_cv29(backend, token, &p, mode, cancel).await {
         Ok(v) => v,
@@ -126,12 +127,13 @@ pub async fn set(
     let writes = match plan_set_writes(p.new_address, cv29, p.long_bit, cv28, p.railcom_plus) {
         Ok(PlanSetWrites::Ok(w)) => w,
         Ok(PlanSetWrites::SkippedRailcomPlus { want, writes }) => {
-            tracing::warn!(railcom_plus = want, "CV28 not read, skipping RailComPlus write");
+            tracing::warn!(
+                railcom_plus = want,
+                "CV28 not read, skipping RailComPlus write"
+            );
             writes
         }
-        Err(pc_core::AddressError::InvalidAddress) => {
-            return Ack::fail(CODE_INVALID_ADDRESS, None)
-        }
+        Err(pc_core::AddressError::InvalidAddress) => return Ack::fail(CODE_INVALID_ADDRESS, None),
         Err(pc_core::AddressError::InvalidLongBit) => {
             return Ack::fail(CODE_INVALID_LONG_BIT, None)
         }
@@ -201,7 +203,10 @@ enum VerifyOutcome {
         prog_current_ma: Option<i16>,
         batch: Vec<CvEntry>,
     },
-    Failed { detail: String, batch: Vec<CvEntry> },
+    Failed {
+        detail: String,
+        batch: Vec<CvEntry>,
+    },
 }
 
 impl VerifyOutcome {
@@ -379,9 +384,18 @@ mod tests {
     fn addr_cvs(cv1: u8, cv17: u8, cv18: u8, cv29: u8) -> Vec<CvEntry> {
         vec![
             CvEntry { cv: 1, value: cv1 },
-            CvEntry { cv: 17, value: cv17 },
-            CvEntry { cv: 18, value: cv18 },
-            CvEntry { cv: 29, value: cv29 },
+            CvEntry {
+                cv: 17,
+                value: cv17,
+            },
+            CvEntry {
+                cv: 18,
+                value: cv18,
+            },
+            CvEntry {
+                cv: 29,
+                value: cv29,
+            },
         ]
     }
 
@@ -397,8 +411,7 @@ mod tests {
 
     #[test]
     fn verify_ok_when_decoder_matches() {
-        let outcome =
-            verify_from_batch(&addr_cvs(13, 200, 90, 62), 2138, CV29_LONG_BIT, None);
+        let outcome = verify_from_batch(&addr_cvs(13, 200, 90, 62), 2138, CV29_LONG_BIT, None);
         let ack = outcome.into_ack();
         assert!(ack.ok);
         assert_eq!(ack.cvs.as_ref().map(|c| c.len()), Some(4));
@@ -406,8 +419,7 @@ mod tests {
 
     #[test]
     fn verify_reverted_when_cv29_clears_long_bit() {
-        let outcome =
-            verify_from_batch(&addr_cvs(13, 200, 90, 30), 2138, CV29_LONG_BIT, None);
+        let outcome = verify_from_batch(&addr_cvs(13, 200, 90, 30), 2138, CV29_LONG_BIT, None);
         let ack = outcome.into_ack();
         assert!(!ack.ok);
         assert_eq!(ack.error.as_deref(), Some(CODE_ADDRESS_REVERTED));
@@ -418,8 +430,7 @@ mod tests {
 
     #[test]
     fn verify_reverted_when_cv_missing() {
-        let outcome =
-            verify_from_batch(&[CvEntry { cv: 1, value: 13 }], 2138, CV29_LONG_BIT, None);
+        let outcome = verify_from_batch(&[CvEntry { cv: 1, value: 13 }], 2138, CV29_LONG_BIT, None);
         let ack = outcome.into_ack();
         assert!(!ack.ok);
         assert_eq!(ack.error.as_deref(), Some(CODE_ADDRESS_REVERTED));
@@ -567,7 +578,13 @@ mod tests {
         };
         let ack = set(&cfg, &backend, None, p, &cancel).await;
         assert!(ack.ok);
-        let written: Vec<u16> = backend.writes.lock().unwrap().iter().map(|e| e.cv).collect();
+        let written: Vec<u16> = backend
+            .writes
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|e| e.cv)
+            .collect();
         assert_eq!(written, vec![17, 18, 29]);
     }
 
@@ -612,7 +629,13 @@ mod tests {
         };
         let ack = set(&cfg, &backend, None, p, &cancel).await;
         assert!(ack.ok);
-        let written: Vec<u16> = backend.writes.lock().unwrap().iter().map(|e| e.cv).collect();
+        let written: Vec<u16> = backend
+            .writes
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|e| e.cv)
+            .collect();
         assert_eq!(written, vec![RAILCOM_PLUS_CV, 17, 18, 29]);
     }
 

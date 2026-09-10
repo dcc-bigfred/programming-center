@@ -134,6 +134,7 @@
       "cab": "Führerstand (CV 3 / 4)",
       "brakeFn": "Bremse {{n}}",
       "threeNote": "CV 2 < CV 6 < CV 5 einhalten.",
+      "threePointVariantHint": "Nicht jede LokSound-Variante unterstützt die 3-Punkt-Kennlinie. Springen die Werte nach dem Schreiben zurück oder schlägt das Schreiben fehl, nutze die 28-Punkt-Kennlinie.",
       "tableNote": "CV 67 = 1 und CV 94 = 255 sind fest. CV 2 und CV 5 skalieren die Kurve (Vmin / Vmax).",
       "accelNote": "CV 3 × 0,896 s vom Stillstand bis Vmax (LokSound 5 DCC). CV 23 korrigiert die Zeit. Der Weg wächst mit der Geschwindigkeit.",
       "brakeNote": "CV 4 × 0,896 s. CV 24 korrigiert die Zeit. Bremsfunktionen verkürzen CV 4 und können die Geschwindigkeit begrenzen, solange sie aktiv sind."
@@ -410,6 +411,7 @@
   "errors": {
     "generic": "Etwas ist schiefgelaufen.",
     "unauthorized": "Sitzung abgelaufen — bitte erneut anmelden.",
+    "auth_required": "Melde dich über BigFred an, um über dcc-bus zu programmieren.",
     "forbidden": "Keine Berechtigung.",
     "dcc_bus_unavailable": "Keine Verbindung zur Zentrale (dcc-bus). Öffne die Anlage in BigFred.",
     "no_programming_station": "Keine Zentrale hat die Programmierung aktiviert.",

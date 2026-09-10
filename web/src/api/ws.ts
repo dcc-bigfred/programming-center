@@ -1,4 +1,4 @@
-import { ApiError, getToken } from "./client";
+import { ApiError } from "./client";
 import type { Ack, CvEntry, Track } from "./types";
 import { flushCvTable, rememberRead } from "../cv/table";
 import {
@@ -366,8 +366,7 @@ export class ProgrammingClient {
     read?: { liveApply: boolean; cvs: number[] },
   ): Promise<Ack> {
     if (signal?.aborted) throw cancelled();
-    const token = getToken();
-    this.connect(token);
+    this.connect(this.wantedToken ?? null);
     await this.waitOpen(signal);
     const id = requestId();
     const env: Envelope = { type, id, payload };

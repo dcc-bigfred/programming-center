@@ -134,6 +134,7 @@
       "cab": "Cab (CV 3 / 4)",
       "brakeFn": "Brake {{n}}",
       "threeNote": "Keep CV 2 < CV 6 < CV 5.",
+      "threePointVariantHint": "Not every LokSound variant supports the 3-point curve. If the settings revert after saving, or the write fails, use the 28-point curve instead.",
       "tableNote": "CV 67 = 1 and CV 94 = 255 are fixed. CV 2 and CV 5 scale the curve (Vmin / Vmax).",
       "accelNote": "CV 3 × 0.896 s from standstill to Vmax (LokSound 5 DCC). CV 23 trims the time. Distance grows with speed.",
       "brakeNote": "CV 4 × 0.896 s. CV 24 trims the time. Brake functions shorten CV 4 and may cap speed while active."
@@ -410,6 +411,7 @@
   "errors": {
     "generic": "Something went wrong.",
     "unauthorized": "Session expired — please sign in again.",
+    "auth_required": "Sign in through BigFred to program over dcc-bus.",
     "forbidden": "Permission denied.",
     "dcc_bus_unavailable": "No connection to the command station (dcc-bus). Open the layout in BigFred.",
     "no_programming_station": "No command station has programming enabled.",
