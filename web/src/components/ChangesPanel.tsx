@@ -29,7 +29,7 @@ const ghost = {
 
 export default function ChangesPanel() {
   const { t } = useTranslation();
-  const { diffs, apply, discard, applyBusy, applyError, applyFailed, formatDiffs } =
+  const { diffs, sections, hasPending, apply, discard, applyBusy, applyError, applyFailed, formatSections } =
     useCvRegistry();
   const { confirm, dialog } = useConfirm();
   const [params] = useSearchParams();
@@ -40,7 +40,7 @@ export default function ChangesPanel() {
   const [createBusy, setCreateBusy] = useState(false);
   const [createError, setCreateError] = useState<unknown>(null);
   const [nameError, setNameError] = useState(false);
-  const text = formatDiffs(diffs);
+  const text = formatSections(sections);
   const canCreate = Boolean(decoder) && diffs.length > 0;
 
   const submitCreate = async () => {
@@ -90,7 +90,7 @@ export default function ChangesPanel() {
         <Button
           size="small"
           variant="contained"
-          disabled={applyBusy || diffs.length === 0}
+          disabled={applyBusy || !hasPending}
           onClick={() => void apply()}
         >
           {t("changes.apply")}
@@ -98,7 +98,7 @@ export default function ChangesPanel() {
         <Button
           size="small"
           variant="outlined"
-          disabled={diffs.length === 0}
+          disabled={!hasPending}
           onClick={() => setOpen(true)}
           sx={ghost}
         >
@@ -107,7 +107,7 @@ export default function ChangesPanel() {
         <Button
           size="small"
           variant="outlined"
-          disabled={applyBusy || diffs.length === 0}
+          disabled={applyBusy || !hasPending}
           onClick={() => {
             void (async () => {
               const ok = await confirm({
@@ -134,23 +134,30 @@ export default function ChangesPanel() {
         </Alert>
       ) : null}
       <Box sx={{ mt: 1.5 }}>
-        {diffs.length === 0 ? (
+        {!hasPending ? (
           <Typography sx={{ color: "rgba(255,255,255,0.35)", fontSize: 12 }}>
             {t("changes.empty")}
           </Typography>
         ) : (
-          diffs.map((d) => (
-            <Typography
-              key={d.cv}
-              sx={{
-                color: "rgba(255,255,255,0.45)",
-                fontSize: 12,
-                fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-                lineHeight: 1.4,
-              }}
-            >
-              CV{d.cv}={d.value}
-            </Typography>
+          sections.map((section) => (
+            <Box key={section.source} sx={{ mb: 1 }}>
+              <Typography sx={{ color: "rgba(255,255,255,0.55)", fontSize: 11, fontWeight: 600, mb: 0.25 }}>
+                {t(section.labelI18nKey)}
+              </Typography>
+              {section.entries.map((e) => (
+                <Typography
+                  key={e.key}
+                  sx={{
+                    color: "rgba(255,255,255,0.45)",
+                    fontSize: 12,
+                    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                    lineHeight: 1.4,
+                  }}
+                >
+                  {e.label}={e.value}
+                </Typography>
+              ))}
+            </Box>
           ))
         )}
       </Box>

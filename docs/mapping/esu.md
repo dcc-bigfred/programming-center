@@ -10,11 +10,22 @@ one page (`EsuMappingPage`) parameterized by a profile in
 `web/src/features/esuMapping.ts`.
 
 Indexed CVs **257–511** reuse the same numbers on every CV 32 page, so
-they are **not** stored in `CvRegistry`. The mapping page keeps an
-indexed table (`16.{cv32}.{cv}` in sessionStorage) and **Apply** lives
-on the mapping page: each dirty page is one `cv.write` of
-`CV31=16`, then `CV32=page`, then the payload. Direct CV and
-**Zmiany** never see those 257–511 values.
+they cannot live in the main `CvRegistry` table (a `setCv(257, x)`
+would clobber every other page). While **Mapping** is open, the page
+registers a side table (`esu-indexed`, keys `16.{cv32}.{cv}` in
+sessionStorage) with `CvRegistry`. **Zmiany** then shows a separate ESU
+group (`CV257 (str. 3)`) and **Zaaplikuj** writes main diffs first, then
+one `cv.write` per dirty page: `CV31=16`, `CV32=page`, then the payload.
+
+The side table is **page-scoped**. Leaving `/mapping` unregisters it, so
+Direct CV and a later Apply from `/cv` never write mapping windows.
+Unsaved mapping diffs require confirmation; OK discards only the side
+table (speed / volume / CV-list edits stay). A clean leave does not
+prompt; the read cache stays so coming back does not dump those pages
+again. Changelists and backup stay main-only — mapping edits are applied
+live, not saved as JSON.
+
+Direct CV never lists 257–511.
 
 Do not dump the whole table on entry. The kiosk reads the current group
 of 5 mapping scenes, or output configuration when that tab is opened.

@@ -22,6 +22,9 @@ import { matchManufacturer } from "../features/detectDecoder";
 import { optionalT } from "../i18n";
 import { addressNumber, readQuery, stationNumber, withQuery } from "../query";
 
+/** Survives reloads so a closed POM tip does not keep interrupting decoder pick. */
+export const POM_HINT_STORAGE_KEY = "programming-center.pomHintDismissed";
+
 const tileSx = {
   minHeight: 140,
   height: "100%",
@@ -42,6 +45,14 @@ export default function HomePage() {
   const [error, setError] = useState<unknown>(null);
   const [unknownId, setUnknownId] = useState<number | null>(null);
   const [esuInfo, setEsuInfo] = useState(false);
+  const [pomHint, setPomHint] = useState(
+    () => localStorage.getItem(POM_HINT_STORAGE_KEY) !== "1",
+  );
+
+  const dismissPomHint = () => {
+    localStorage.setItem(POM_HINT_STORAGE_KEY, "1");
+    setPomHint(false);
+  };
 
   const session = useMemo(
     () => ({
@@ -91,6 +102,12 @@ export default function HomePage() {
       <Typography color="text.secondary" sx={{ mb: 2 }}>
         {t("home.lead")}
       </Typography>
+      {pomHint ? (
+        <Alert severity="info" sx={{ mb: 2 }} onClose={dismissPomHint}>
+          <strong>{t("home.pomHintLead")}</strong> {t("home.pomHintBody")}{" "}
+          <strong>{t("home.pomHintSpeed")}</strong>
+        </Alert>
+      ) : null}
       {error ? <ErrorAlert error={error} /> : null}
       {unknownId !== null ? (
         <Alert severity="error" sx={{ mb: 2 }}>

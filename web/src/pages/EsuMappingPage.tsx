@@ -1,7 +1,6 @@
 import Accordion from "@mui/material/Accordion";
 import AccordionDetails from "@mui/material/AccordionDetails";
 import AccordionSummary from "@mui/material/AccordionSummary";
-import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Checkbox from "@mui/material/Checkbox";
@@ -25,32 +24,28 @@ import LightModeIcon from "@mui/icons-material/LightMode";
 import TheatersIcon from "@mui/icons-material/Theaters";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useSearchParams } from "react-router-dom";
+import { useBlocker } from "react-router-dom";
 
 import { isCancelled } from "../api/client";
 import { programming } from "../api/ws";
 import { useConfirm } from "../components/ConfirmDialog";
 import ErrorAlert from "../components/ErrorAlert";
 import { useCvRegistry } from "../cv/CvRegistry";
-import { readQuery } from "../query";
 import {
-  discardIndexedCvTable,
-  ensureIndexedCvScope,
   getIndexedCv,
   getIndexedCvSnapshot,
-  indexedCvDiffs,
   rememberIndexedRead,
   setIndexedCv,
   subscribeIndexedCvTable,
 } from "../cv/indexedTable";
 import type { DecoderProfile } from "../decoders/types";
 import {
+  ESU_SIDE_ID,
+  ESU_SIDE_TABLE,
   INDEX_CV31,
   INDEX_CV31_VALUE,
   INDEX_CV32,
-  INDEXED_CV_START,
   SPEC1_BITS,
-  applyBatches,
   clampBrightness,
   cycleCond,
   decodeDelay,
@@ -114,7 +109,6 @@ function condColor(state: CondState): "primary" | "warning" | "standard" {
 }
 
 export default function EsuMappingPage({
-  decoder,
   profile,
   session,
 }: {
@@ -125,29 +119,50 @@ export default function EsuMappingPage({
   const { t } = useTranslation();
   const registry = useCvRegistry();
   const { confirm, dialog } = useConfirm();
-  const [params] = useSearchParams();
-  const station = readQuery(params).station;
   const [tab, setTab] = useState(0);
   const [groupIndex, setGroupIndex] = useState(0);
   const [open, setOpen] = useState<Record<number, boolean | undefined>>({});
   const [openOutput, setOpenOutput] = useState<Record<string, boolean | undefined>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
-  const [applyFailed, setApplyFailed] = useState<string[]>([]);
-  const applying = useRef(false);
+  const leaveConfirming = useRef(false);
 
   useLayoutEffect(() => {
-    ensureIndexedCvScope({
-      decoder: decoder.id,
-      address: session.address,
-      station,
-    });
-  }, [decoder.id, session.address, station]);
+    registry.registerSideTable(ESU_SIDE_TABLE);
+    return () => registry.unregisterSideTable(ESU_SIDE_ID);
+  }, [registry.registerSideTable, registry.unregisterSideTable]);
 
   const snap = useSyncExternalStore(subscribeIndexedCvTable, getIndexedCvSnapshot, getIndexedCvSnapshot);
-  const diffs = useMemo(() => indexedCvDiffs(snap), [snap]);
+  const sideDirty = registry.sideHasPending(ESU_SIDE_ID);
 
-  const get = (cv32: number, cv: number) => getIndexedCv(indexedKey(cv32, cv));
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      sideDirty && currentLocation.pathname !== nextLocation.pathname,
+  );
+
+  useEffect(() => {
+    if (blocker.state !== "blocked" || leaveConfirming.current) return;
+    leaveConfirming.current = true;
+    void (async () => {
+      const ok = await confirm({
+        title: t("changes.confirmLeaveMappingTitle"),
+        body: t("changes.confirmLeaveMappingBody"),
+        danger: true,
+      });
+      if (ok) {
+        registry.discardSide(ESU_SIDE_ID);
+        blocker.proceed();
+        return;
+      }
+      leaveConfirming.current = false;
+      blocker.reset();
+    })();
+  }, [blocker, confirm, registry.discardSide, t]);
+
+  const get = (cv32: number, cv: number) => {
+    void snap;
+    return getIndexedCv(indexedKey(cv32, cv));
+  };
 
   const groups = useMemo(() => rowGroups(profile), [profile]);
   const group = groups[Math.min(groupIndex, groups.length - 1)] ?? groups[0];
@@ -177,6 +192,8 @@ export default function EsuMappingPage({
             ],
             signal: inner,
           });
+          // CV 31/32 are the page window, not a pending mapping diff — they live on
+          // the main table so Zmiany never lists "CV32=3" as a numbered-CV change.
           registry.rememberRead([
             { cv: INDEX_CV31, value: INDEX_CV31_VALUE },
             { cv: INDEX_CV32, value: page.cv32 },
@@ -209,68 +226,12 @@ export default function EsuMappingPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.stationId, session.address, tab, groupIndex, profile.id]);
 
-  const apply = async () => {
-    if (diffs.length === 0 || applying.current) return;
-    const ok = await confirm({
-      title: t("mapping.esu.confirmApplyTitle"),
-      body: t("mapping.esu.confirmApplyBody", { count: diffs.length }),
-    });
-    if (!ok) return;
-    applying.current = true;
-    setBusy(true);
-    setError(null);
-    setApplyFailed([]);
-    try {
-      const batches = applyBatches(diffs);
-      const failedKeys: string[] = [];
-      await programming.withOverlay({ mode: "write" }, async (signal) => {
-        for (const batch of batches) {
-          const written = await programming.cvWrite({ ...session, cvs: batch.cvs, signal });
-          const failed = new Set(written.errors);
-          const confirmed = batch.cvs
-            .filter((e) => e.cv >= INDEXED_CV_START && !failed.has(e.cv))
-            .map((e) => ({ key: indexedKey(batch.cv32, e.cv), value: e.value }));
-          rememberIndexedRead(confirmed);
-          if (!failed.has(INDEX_CV31) && !failed.has(INDEX_CV32)) {
-            registry.rememberRead([
-              { cv: INDEX_CV31, value: INDEX_CV31_VALUE },
-              { cv: INDEX_CV32, value: batch.cv32 },
-            ]);
-          }
-          for (const e of batch.cvs) {
-            if (e.cv >= INDEXED_CV_START && failed.has(e.cv)) {
-              failedKeys.push(indexedKey(batch.cv32, e.cv));
-            }
-          }
-        }
-      });
-      setApplyFailed(failedKeys);
-    } catch (err) {
-      if (!isCancelled(err)) setError(err);
-    } finally {
-      applying.current = false;
-      setBusy(false);
-    }
-  };
-
-  const discard = async () => {
-    const ok = await confirm({
-      title: t("mapping.esu.confirmDiscardTitle"),
-      body: t("mapping.esu.confirmDiscardBody"),
-      danger: true,
-    });
-    if (ok) discardIndexedCvTable();
-  };
-
   const currentPages = tab === 0 ? group?.pages ?? [] : [outputsPage];
 
   return (
     <Stack spacing={3}>
       {dialog}
       {error ? <ErrorAlert error={error} /> : null}
-      {applyFailed.length > 0 ? (
-        <Alert severity="warning">{t("mapping.esu.applyPartial", { cvs: applyFailed.join(", ") })}</Alert>
-      ) : null}
 
       <Tabs value={tab} onChange={(_, v: number) => setTab(v)} variant="fullWidth">
         <Tab label={t("mapping.esu.tabRows")} sx={{ minHeight: 48 }} />
@@ -371,17 +332,6 @@ export default function EsuMappingPage({
         <Button variant="outlined" disabled={busy} onClick={() => void readPages(currentPages)}>
           {t("mapping.read")}
         </Button>
-        <Button variant="contained" disabled={busy || diffs.length === 0} onClick={() => void apply()}>
-          {t("mapping.esu.apply")}
-        </Button>
-        <Button variant="outlined" disabled={busy || diffs.length === 0} onClick={() => void discard()}>
-          {t("mapping.esu.discard")}
-        </Button>
-        {diffs.length > 0 ? (
-          <Typography color="text.secondary" alignSelf="center">
-            {t("mapping.esu.dirtyCount", { count: diffs.length })}
-          </Typography>
-        ) : null}
       </Stack>
     </Stack>
   );

@@ -1,5 +1,7 @@
 /** Observed CV table: key = CV number, value = CV byte. */
 
+import type { CvStore } from "./store";
+
 export type CvTable = Record<number, number>;
 
 export interface CvDiff {
@@ -186,6 +188,21 @@ export function cvDiffs(snap: Snapshot = snapshot): CvDiff[] {
 export function formatCvDiffs(diffs: CvDiff[]): string {
   return diffs.map((d) => `CV${d.cv}=${d.value}`).join("\n");
 }
+
+/** Main-table adapter so CvRegistry can treat numbered CVs as a CvStore. */
+export const mainCvStore: CvStore<number> = {
+  subscribe: subscribeCvTable,
+  getSnapshot: getCvSnapshot,
+  ensureScope: ensureCvScope,
+  get: getCv,
+  set: setCv,
+  setMany: (entries) => setCvs(entries.map((e) => ({ cv: e.key, value: e.value }))),
+  diffs: () => cvDiffs().map((d) => ({ key: d.cv, value: d.value })),
+  rememberRead: (entries) => rememberRead(entries.map((e) => ({ cv: e.key, value: e.value }))),
+  discard: discardCvTable,
+  reset: resetCvTable,
+  flush: flushCvTable,
+};
 
 if (typeof window !== "undefined") {
   window.addEventListener("beforeunload", () => flushCvTable());

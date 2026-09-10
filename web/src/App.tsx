@@ -1,7 +1,7 @@
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import CircularProgress from "@mui/material/CircularProgress";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Outlet, createBrowserRouter } from "react-router-dom";
 import { lazy, Suspense, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -57,81 +57,89 @@ function Protected({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-function Router() {
-  return (
-    <Suspense fallback={<RouteFallback />}>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/auth/callback" element={<CallbackPage />} />
-        <Route
-          path="/"
-          element={
-            <Protected>
-              <HomePage />
-            </Protected>
-          }
-        />
-        <Route
-          path="/cv"
-          element={
-            <Protected>
-              <CvListPage />
-            </Protected>
-          }
-        />
-        <Route
-          path="/speed"
-          element={
-            <Protected>
-              <SpeedPage />
-            </Protected>
-          }
-        />
-        <Route
-          path="/address"
-          element={
-            <Protected>
-              <AddressPage />
-            </Protected>
-          }
-        />
-        <Route
-          path="/volume"
-          element={
-            <Protected>
-              <VolumePage />
-            </Protected>
-          }
-        />
-        <Route
-          path="/mapping"
-          element={
-            <Protected>
-              <MappingPage />
-            </Protected>
-          }
-        />
-        <Route
-          path="/backup"
-          element={
-            <Protected>
-              <BackupPage />
-            </Protected>
-          }
-        />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </Suspense>
-  );
-}
-
-export default function App() {
+function RootLayout() {
   return (
     <AuthProvider>
       <CvRegistryProvider>
         <CvReadOverlay />
-        <Router />
+        <Suspense fallback={<RouteFallback />}>
+          <Outlet />
+        </Suspense>
       </CvRegistryProvider>
     </AuthProvider>
   );
 }
+
+export const router = createBrowserRouter(
+  [
+    {
+      element: <RootLayout />,
+      children: [
+        { path: "/login", element: <LoginPage /> },
+        { path: "/auth/callback", element: <CallbackPage /> },
+        {
+          path: "/",
+          element: (
+            <Protected>
+              <HomePage />
+            </Protected>
+          ),
+        },
+        {
+          path: "/cv",
+          element: (
+            <Protected>
+              <CvListPage />
+            </Protected>
+          ),
+        },
+        {
+          path: "/speed",
+          element: (
+            <Protected>
+              <SpeedPage />
+            </Protected>
+          ),
+        },
+        {
+          path: "/address",
+          element: (
+            <Protected>
+              <AddressPage />
+            </Protected>
+          ),
+        },
+        {
+          path: "/volume",
+          element: (
+            <Protected>
+              <VolumePage />
+            </Protected>
+          ),
+        },
+        {
+          path: "/mapping",
+          element: (
+            <Protected>
+              <MappingPage />
+            </Protected>
+          ),
+        },
+        {
+          path: "/backup",
+          element: (
+            <Protected>
+              <BackupPage />
+            </Protected>
+          ),
+        },
+        { path: "*", element: <Navigate to="/" replace /> },
+      ],
+    },
+  ],
+  {
+    future: {
+      v7_relativeSplatPath: true,
+    },
+  },
+);

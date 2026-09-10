@@ -66,7 +66,10 @@
     "detect": "Decoder erkennen",
     "detectHint": "CV 8 lesen (Hersteller-ID)",
     "esuAmbiguous": "CV 8 = 151 (ESU). LokSound v5 wurde gewählt — v4 und v5 teilen diese ID. Bei v4 bitte manuell umschalten.",
-    "detectUnknown": "Unbekannter Hersteller (CV 8 = {{id}}). Generisches NMRA-Profil gewählt."
+    "detectUnknown": "Unbekannter Hersteller (CV 8 = {{id}}). Generisches NMRA-Profil gewählt.",
+    "pomHintLead": "Tipp:",
+    "pomHintBody": "Wenn möglich POM-Modus verwenden — auf vielen Zentralen funktioniert er auch auf dem Programmiergleis.",
+    "pomHintSpeed": "Im POM-Modus sind CV-Lesen und -Schreiben oft um ein Vielfaches schneller."
   },
   "features": {
     "cv": "CVs lesen / schreiben",
@@ -218,7 +221,7 @@
     "esu": {
       "tabRows": "Funktionszuordnung",
       "tabOutputs": "Ausgangskonfiguration",
-      "rowsHint": "Eine Szene wirkt, wenn alle gewählten Bedingungen zutreffen.",
+      "rowsHint": "Eine Szene tritt ein, wenn ihre Bedingungen erfüllt sind. Es gibt viele Szenen; der ESU-LokSound-Decoder speichert sie aufwendig mit CV32-Paginierung, daher werden Änderungen in Stapeln geschrieben.",
       "outputsHint": "Helligkeit, Lichteffekt und LED-Optionen je physikalischem Ausgang.",
       "groupRows": "Szenen {{from}}–{{to}}",
       "rowTitle": "Szene {{n}}",
@@ -371,7 +374,11 @@
     "dialogTitle": "CV-Änderungen",
     "applyPartial": "Nicht geschrieben: {{cvs}}",
     "confirmDiscardTitle": "Ungespeicherte Änderungen verwerfen?",
-    "confirmDiscardBody": "Die vorgemerkten CV-Werte gehen verloren."
+    "confirmDiscardBody": "Die vorgemerkten CV-Werte gehen verloren.",
+    "mainGroup": "CV",
+    "esuGroup": "ESU-Mapping",
+    "confirmLeaveMappingTitle": "Mapping-Änderungen verwerfen?",
+    "confirmLeaveMappingBody": "Ungespeicherte Mapping-Änderungen gehen verloren. Änderungen an der CV-Liste, Geschwindigkeit und Lautstärke bleiben."
   },
   "changeLists": {
     "createTitle": "Neue Änderungsliste anlegen",

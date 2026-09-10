@@ -1,5 +1,6 @@
 /** Indexed CV table: key = "cv31.cv32.cv", value = CV byte. */
 
+import type { CvStore } from "./store";
 import type { CvScope } from "./table";
 
 export interface IndexedCvDiff {
@@ -167,6 +168,21 @@ export function indexedCvDiffs(snap: Snapshot = snapshot): IndexedCvDiff[] {
   }
   return diffs.sort((a, b) => a.cv32 - b.cv32 || a.cv - b.cv);
 }
+
+/** Indexed-table adapter. Keys stay `16.{cv32}.{cv}` — not a CV number. */
+export const indexedCvStore: CvStore<string> = {
+  subscribe: subscribeIndexedCvTable,
+  getSnapshot: getIndexedCvSnapshot,
+  ensureScope: ensureIndexedCvScope,
+  get: getIndexedCv,
+  set: setIndexedCv,
+  setMany: setIndexedCvs,
+  diffs: () => indexedCvDiffs().map((d) => ({ key: d.key, value: d.value })),
+  rememberRead: rememberIndexedRead,
+  discard: discardIndexedCvTable,
+  reset: resetIndexedCvTable,
+  flush: flushIndexedCvTable,
+};
 
 if (typeof window !== "undefined") {
   window.addEventListener("beforeunload", () => flushIndexedCvTable());

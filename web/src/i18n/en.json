@@ -66,7 +66,10 @@
     "detect": "Detect decoder",
     "detectHint": "Read CV 8 (manufacturer ID)",
     "esuAmbiguous": "CV 8 = 151 (ESU). LokSound v5 was selected — v4 and v5 share this ID. If this is v4, pick it manually.",
-    "detectUnknown": "Unknown manufacturer (CV 8 = {{id}}). Generic NMRA profile selected."
+    "detectUnknown": "Unknown manufacturer (CV 8 = {{id}}). Generic NMRA profile selected.",
+    "pomHintLead": "Tip:",
+    "pomHintBody": "If possible, try POM mode — it often works even on the programming track on many command stations.",
+    "pomHintSpeed": "In POM, reading and writing CVs can be several times faster."
   },
   "features": {
     "cv": "Read / write CVs",
@@ -218,7 +221,7 @@
     "esu": {
       "tabRows": "Function mapping",
       "tabOutputs": "Output setup",
-      "rowsHint": "Each scene fires when every selected condition matches.",
+      "rowsHint": "A scene fires when its conditions are met. There are many scenes; the ESU LokSound decoder stores them in a complex way using CV32 paging, so changes are written in batches.",
       "outputsHint": "Brightness, lighting effect, and LED options for each physical output.",
       "groupRows": "Scenes {{from}}–{{to}}",
       "rowTitle": "Scene {{n}}",
@@ -371,7 +374,11 @@
     "dialogTitle": "CV changes",
     "applyPartial": "Not written: {{cvs}}",
     "confirmDiscardTitle": "Discard unsaved changes?",
-    "confirmDiscardBody": "Staged CV values will be thrown away."
+    "confirmDiscardBody": "Staged CV values will be thrown away.",
+    "mainGroup": "CV",
+    "esuGroup": "ESU mapping",
+    "confirmLeaveMappingTitle": "Discard mapping changes?",
+    "confirmLeaveMappingBody": "Unsaved mapping edits will be thrown away. Changes from the CV list, speed, and volume stay."
   },
   "changeLists": {
     "createTitle": "Create a change list",

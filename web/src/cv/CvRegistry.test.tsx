@@ -1,9 +1,12 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useLayoutEffect } from "react";
 import { MemoryRouter, useSearchParams } from "react-router-dom";
 
 import type { PublicConfig } from "../api/types";
-import { readQuery } from "../query";
+import { ESU_SIDE_ID, ESU_SIDE_TABLE, indexedKey } from "../features/esuMapping";
+import { readQuery, withQuery } from "../query";
 import { CvRegistryProvider, useCvRegistry } from "./CvRegistry";
+import { getIndexedCv, indexedCvDiffs, rememberIndexedRead, setIndexedCv } from "./indexedTable";
 import { getCv, ensureCvScope, rememberRead, setCv } from "./table";
 
 const { mockAuth, cvRead, cvWrite } = vi.hoisted(() => {
@@ -41,16 +44,25 @@ vi.mock("../api/ws", () => ({
   },
 }));
 
-function RegistryView() {
+function RegistryView({ withSide = false }: { withSide?: boolean }) {
   const r = useCvRegistry();
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
+  useLayoutEffect(() => {
+    if (!withSide) return;
+    r.registerSideTable(ESU_SIDE_TABLE);
+    return () => r.unregisterSideTable(ESU_SIDE_ID);
+  }, [withSide, r.registerSideTable, r.unregisterSideTable]);
   return (
     <div>
       <span data-testid="cv8">{r.get(8) ?? "missing"}</span>
       <span data-testid="diffs">{r.formatDiffs(r.diffs)}</span>
+      <span data-testid="sections">{r.formatSections(r.sections)}</span>
+      <span data-testid="has-pending">{r.hasPending ? "yes" : "no"}</span>
+      <span data-testid="side-pending">{r.sideHasPending(ESU_SIDE_ID) ? "yes" : "no"}</span>
       <span data-testid="addr-err">{r.addressError ? "yes" : "no"}</span>
       <span data-testid="q-addr">{readQuery(params).address}</span>
       <span data-testid="apply-busy">{r.applyBusy ? "yes" : "no"}</span>
+      <span data-testid="apply-failed">{r.applyFailed.join(",")}</span>
       <button type="button" onClick={() => void r.ensureRead([8, 2])}>
         ensure
       </button>
@@ -60,18 +72,39 @@ function RegistryView() {
       <button type="button" onClick={() => void r.apply()}>
         apply
       </button>
+      <button type="button" onClick={() => r.registerSideTable(ESU_SIDE_TABLE)}>
+        register-side
+      </button>
+      <button type="button" onClick={() => r.registerSideTable(ESU_SIDE_TABLE)}>
+        register-side-again
+      </button>
+      <button type="button" onClick={() => r.unregisterSideTable(ESU_SIDE_ID)}>
+        unregister-side
+      </button>
+      <button type="button" onClick={() => r.discard()}>
+        discard
+      </button>
+      <button type="button" onClick={() => r.discardSide(ESU_SIDE_ID)}>
+        discard-side
+      </button>
+      <button
+        type="button"
+        onClick={() => setParams(withQuery(params, { address: "9" }))}
+      >
+        addr9
+      </button>
     </div>
   );
 }
 
-function renderRegistry(search: string) {
+function renderRegistry(search: string, withSide = false) {
   return render(
     <MemoryRouter
       initialEntries={[`/${search}`]}
       future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
     >
       <CvRegistryProvider>
-        <RegistryView />
+        <RegistryView withSide={withSide} />
       </CvRegistryProvider>
     </MemoryRouter>,
   );
@@ -291,5 +324,172 @@ describe("CvRegistryProvider", () => {
       expect(screen.getByTestId("addr-err")).toHaveTextContent("no");
     });
     expect(cvRead).not.toHaveBeenCalled();
+  });
+
+  it("applies main diffs then side page batches", async () => {
+    renderRegistry("?decoder=loksound-v5&address=5&track=prog", true);
+    act(() => {
+      rememberRead([{ cv: 2, value: 7 }]);
+      setCv(2, 40);
+      rememberIndexedRead([{ key: indexedKey(3, 257), value: 0 }]);
+      setIndexedCv(indexedKey(3, 257), 4);
+    });
+    cvWrite.mockResolvedValue({ cvs: [], errors: [] });
+    await waitFor(() => {
+      expect(screen.getByTestId("sections")).toHaveTextContent("CV257 (str. 3)=4");
+    });
+    fireEvent.click(screen.getByText("apply"));
+    await waitFor(() => {
+      expect(cvWrite).toHaveBeenCalledTimes(2);
+    });
+    expect(cvWrite.mock.calls[0]?.[0]).toMatchObject({
+      cvs: [{ cv: 2, value: 40 }],
+    });
+    expect(cvWrite.mock.calls[1]?.[0]).toMatchObject({
+      cvs: [
+        { cv: 31, value: 16 },
+        { cv: 32, value: 3 },
+        { cv: 257, value: 4 },
+      ],
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("has-pending")).toHaveTextContent("no");
+    });
+  });
+
+  it("does not write indexed CVs when the side table is unregistered", async () => {
+    renderRegistry("?decoder=loksound-v5&address=5&track=prog");
+    act(() => {
+      setCv(2, 40);
+      rememberIndexedRead([{ key: indexedKey(3, 257), value: 0 }]);
+      setIndexedCv(indexedKey(3, 257), 4);
+    });
+    cvWrite.mockResolvedValue({ cvs: [{ cv: 2, value: 40 }], errors: [] });
+    fireEvent.click(screen.getByText("apply"));
+    await waitFor(() => {
+      expect(cvWrite).toHaveBeenCalledTimes(1);
+    });
+    expect(cvWrite.mock.calls[0]?.[0]).toMatchObject({
+      cvs: [{ cv: 2, value: 40 }],
+    });
+    expect(indexedCvDiffs()).toHaveLength(1);
+  });
+
+  it("hides side diffs after unregister without touching main", async () => {
+    renderRegistry("?decoder=loksound-v5&address=5&track=prog", true);
+    act(() => {
+      setCv(2, 40);
+      rememberIndexedRead([{ key: indexedKey(3, 257), value: 0 }]);
+      setIndexedCv(indexedKey(3, 257), 4);
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("side-pending")).toHaveTextContent("yes");
+    });
+    fireEvent.click(screen.getByText("unregister-side"));
+    await waitFor(() => {
+      expect(screen.getByTestId("side-pending")).toHaveTextContent("no");
+    });
+    expect(screen.getByTestId("diffs")).toHaveTextContent("CV2=40");
+    expect(screen.getByTestId("sections")).not.toHaveTextContent("CV257");
+    expect(indexedCvDiffs()).toHaveLength(1);
+  });
+
+  it("discard clears main and the active side; discardSide leaves main", async () => {
+    renderRegistry("?decoder=loksound-v5&address=5&track=prog", true);
+    act(() => {
+      rememberRead([{ cv: 2, value: 7 }]);
+      setCv(2, 40);
+      rememberIndexedRead([{ key: indexedKey(3, 257), value: 0 }]);
+      setIndexedCv(indexedKey(3, 257), 4);
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("has-pending")).toHaveTextContent("yes");
+    });
+    fireEvent.click(screen.getByText("discard-side"));
+    await waitFor(() => {
+      expect(screen.getByTestId("side-pending")).toHaveTextContent("no");
+    });
+    expect(screen.getByTestId("diffs")).toHaveTextContent("CV2=40");
+    expect(getIndexedCv(indexedKey(3, 257))).toBe(0);
+    fireEvent.click(screen.getByText("discard"));
+    await waitFor(() => {
+      expect(screen.getByTestId("has-pending")).toHaveTextContent("no");
+    });
+    expect(getCv(2)).toBe(7);
+  });
+
+  it("rememberRead on a side is not pending; set creates a diff", async () => {
+    renderRegistry("?decoder=loksound-v5&address=5&track=prog", true);
+    act(() => {
+      rememberIndexedRead([{ key: indexedKey(3, 257), value: 20 }]);
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("side-pending")).toHaveTextContent("no");
+    });
+    act(() => {
+      setIndexedCv(indexedKey(3, 257), 22);
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("sections")).toHaveTextContent("CV257 (str. 3)=22");
+    });
+  });
+
+  it("changing address scope does not leak old diffs", async () => {
+    renderRegistry("?decoder=loksound-v5&address=5&track=prog", true);
+    act(() => {
+      setCv(2, 40);
+      rememberIndexedRead([{ key: indexedKey(3, 257), value: 0 }]);
+      setIndexedCv(indexedKey(3, 257), 4);
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("has-pending")).toHaveTextContent("yes");
+    });
+    fireEvent.click(screen.getByText("addr9"));
+    await waitFor(() => {
+      expect(screen.getByTestId("q-addr")).toHaveTextContent("9");
+    });
+    expect(screen.getByTestId("has-pending")).toHaveTextContent("no");
+    expect(getCv(2)).toBeUndefined();
+    expect(getIndexedCv(indexedKey(3, 257))).toBeUndefined();
+  });
+
+  it("registerSideTable of the same id is idempotent", async () => {
+    renderRegistry("?decoder=loksound-v5&address=5&track=prog", true);
+    act(() => {
+      rememberIndexedRead([{ key: indexedKey(3, 257), value: 0 }]);
+      setIndexedCv(indexedKey(3, 257), 4);
+    });
+    fireEvent.click(screen.getByText("register-side-again"));
+    await waitFor(() => {
+      expect(screen.getByTestId("sections")).toHaveTextContent("CV257 (str. 3)=4");
+    });
+    expect(screen.getByTestId("sections").textContent?.split("CV257").length).toBe(2);
+  });
+
+  it("keeps failed side-page keys after a partial apply", async () => {
+    renderRegistry("?decoder=loksound-v5&address=5&track=prog", true);
+    act(() => {
+      rememberIndexedRead([
+        { key: indexedKey(3, 257), value: 0 },
+        { key: indexedKey(8, 257), value: 0 },
+      ]);
+      setIndexedCv(indexedKey(3, 257), 1);
+      setIndexedCv(indexedKey(8, 257), 2);
+    });
+    cvWrite.mockImplementation(async (req: { cvs: { cv: number; value: number }[] }) => {
+      const page = req.cvs.find((e) => e.cv === 32)?.value;
+      if (page === 8) return { cvs: [], errors: [257] };
+      return { cvs: req.cvs, errors: [] };
+    });
+    fireEvent.click(screen.getByText("apply"));
+    await waitFor(() => {
+      expect(cvWrite.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("sections")).toHaveTextContent("CV257 (str. 8)=2");
+    });
+    expect(screen.getByTestId("sections")).not.toHaveTextContent("CV257 (str. 3)=1");
+    expect(getIndexedCv(indexedKey(3, 257))).toBe(1);
+    expect(indexedCvDiffs().map((d) => d.key)).toEqual([indexedKey(8, 257)]);
   });
 });

@@ -16,7 +16,6 @@ import { useTranslation } from "react-i18next";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 
 import { useCvRegistry } from "../cv/CvRegistry";
-import { indexedCvDiffs } from "../cv/indexedTable";
 import { getDecoder, listDecoders } from "../decoders/registry";
 import { decoderLabelKey } from "../decoders/types";
 import { featuresFor, isFeatureEnabled, listFeatures } from "../features/registry";
@@ -56,19 +55,20 @@ export default function Navigator({ showSession = true, onNavigate, ...other }: 
   const query = readQuery(params);
   const decoder = getDecoder(query.decoder);
   const features = decoder ? featuresFor(decoder) : listFeatures();
-  const { diffs } = useCvRegistry();
+  const { hasPending, discard } = useCvRegistry();
   const { confirm, dialog } = useConfirm();
 
   const changeDecoder = async (value: string) => {
     const next = value || null;
     if ((next ?? "") === (decoder?.id ?? "")) return;
-    if (diffs.length > 0 || indexedCvDiffs().length > 0) {
+    if (hasPending) {
       const ok = await confirm({
         title: t("changes.confirmDiscardTitle"),
         body: t("changes.confirmDiscardBody"),
         danger: true,
       });
       if (!ok) return;
+      discard();
     }
     setParams(withQuery(params, { decoder: next, cv: null }));
   };

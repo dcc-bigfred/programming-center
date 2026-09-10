@@ -20,7 +20,6 @@ import { useSearchParams } from "react-router-dom";
 
 import type { CommandStation, Track } from "../api/types";
 import { useCvRegistry } from "../cv/CvRegistry";
-import { indexedCvDiffs } from "../cv/indexedTable";
 import { useConfirm } from "./ConfirmDialog";
 import {
   LANGUAGE_FLAG_ICONS,
@@ -70,7 +69,7 @@ export default function Header({
   const { t } = useTranslation();
   const [params, setParams] = useSearchParams();
   const query = readQuery(params);
-  const { diffs } = useCvRegistry();
+  const { hasPending, discard } = useCvRegistry();
   const { confirm, dialog } = useConfirm();
   const [addrDraft, setAddrDraft] = useState(query.address);
 
@@ -79,12 +78,14 @@ export default function Header({
   }, [query.address]);
 
   const guardUnsaved = async (): Promise<boolean> => {
-    if (diffs.length === 0 && indexedCvDiffs().length === 0) return true;
-    return confirm({
+    if (!hasPending) return true;
+    const ok = await confirm({
       title: t("changes.confirmDiscardTitle"),
       body: t("changes.confirmDiscardBody"),
       danger: true,
     });
+    if (ok) discard();
+    return ok;
   };
 
   const changeStation = async (value: string) => {

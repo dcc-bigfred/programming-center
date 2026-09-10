@@ -3,6 +3,7 @@ import {
   INDEX_CV32,
   INDEX_CV31_VALUE,
   applyBatches,
+  esuSideBatches,
   decodeConditions,
   decodeLogic,
   encodeConditions,
@@ -125,6 +126,21 @@ describe("esuMapping", () => {
     ]);
     expect(batches[1].cvs[1]).toEqual({ cv: INDEX_CV32, value: 8 });
     expect(batches[1].cvs[2]).toEqual({ cv: 257, value: 1 });
+    for (const batch of batches) {
+      expect(batch.cvs[0]).toEqual({ cv: INDEX_CV31, value: INDEX_CV31_VALUE });
+      expect(batch.cvs[1]).toEqual({ cv: INDEX_CV32, value: batch.cv32 });
+      expect(batch.cvs.slice(2).every((e) => e.cv >= 257)).toBe(true);
+    }
+  });
+
+  it("never ships payload CVs without CV31/32 at the start of the batch", () => {
+    const batches = esuSideBatches([{ key: indexedKey(3, 257), value: 1 }]);
+    expect(batches).toHaveLength(1);
+    expect(batches[0].cvs[0]).toEqual({ cv: INDEX_CV31, value: INDEX_CV31_VALUE });
+    expect(batches[0].cvs[1]).toEqual({ cv: INDEX_CV32, value: 3 });
+    expect(batches[0].cvs.slice(2).some((e) => e.cv === INDEX_CV31 || e.cv === INDEX_CV32)).toBe(
+      false,
+    );
   });
 
   it("parses indexed keys", () => {

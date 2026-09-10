@@ -1,7 +1,25 @@
 import "@testing-library/jest-dom/vitest";
 
-import { resetCvTable } from "../cv/table";
 import { resetIndexedCvTable } from "../cv/indexedTable";
+import { resetCvTable } from "../cv/table";
+
+// jsdom AbortSignal is not undici's AbortSignal. React Router's data router
+// does `new Request(url, { signal })` and undici throws. Drop the signal in tests.
+{
+  const NodeRequest = globalThis.Request;
+  function TestRequest(input: RequestInfo | URL, init?: RequestInit) {
+    if (init && "signal" in init) {
+      const { signal: _ignored, ...rest } = init;
+      return new NodeRequest(input, rest);
+    }
+    return new NodeRequest(input, init);
+  }
+  TestRequest.prototype = NodeRequest.prototype;
+  Object.defineProperty(globalThis, "Request", { configurable: true, value: TestRequest });
+  if (typeof window !== "undefined") {
+    Object.defineProperty(window, "Request", { configurable: true, value: TestRequest });
+  }
+}
 
 function memoryStorage(): Storage {
   const map = new Map<string, string>();

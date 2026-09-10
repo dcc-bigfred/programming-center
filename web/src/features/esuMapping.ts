@@ -1,5 +1,8 @@
 /** ESU LokSound v4 / v5 function mapping (indexed CV 31/32 → 257–511). */
 
+import { indexedCvStore } from "../cv/indexedTable";
+import type { SideTable, SideWriteBatch } from "../cv/store";
+
 export const LOKSOUND_V4_MAPPING_ID = "loksound-v4";
 export const LOKSOUND_V5_MAPPING_ID = "loksound-v5";
 
@@ -327,6 +330,43 @@ export function esuMappingProfile(decoderId: string): EsuMappingProfile | undefi
 export function indexedKey(cv32: number, cv: number): string {
   return `${INDEX_CV31_VALUE}.${cv32}.${cv}`;
 }
+
+export function formatIndexedEntry(key: string, _value: number): string {
+  const parsed = parseIndexedKey(key);
+  if (!parsed) return key;
+  return `CV${parsed.cv} (str. ${parsed.cv32})`;
+}
+
+export const ESU_SIDE_ID = "esu-indexed";
+export const ESU_SIDE_LABEL_KEY = "changes.esuGroup";
+
+/** Side-table write plan: CV31/32 first, then payload; remember only payload keys. */
+export function esuSideBatches(diffs: { key: string; value: number }[]): SideWriteBatch<string>[] {
+  const entries: IndexedEntry[] = [];
+  for (const d of diffs) {
+    const parsed = parseIndexedKey(d.key);
+    if (!parsed) continue;
+    entries.push({ cv32: parsed.cv32, cv: parsed.cv, value: d.value });
+  }
+  return applyBatches(entries).map((batch) => ({
+    cvs: batch.cvs,
+    remember: batch.cvs
+      .filter((e) => e.cv >= INDEXED_CV_START)
+      .map((e) => ({ key: indexedKey(batch.cv32, e.cv), value: e.value, cv: e.cv })),
+    rememberMain: [
+      { cv: INDEX_CV31, value: INDEX_CV31_VALUE },
+      { cv: INDEX_CV32, value: batch.cv32 },
+    ],
+  }));
+}
+
+export const ESU_SIDE_TABLE: SideTable<string> = {
+  id: ESU_SIDE_ID,
+  labelI18nKey: ESU_SIDE_LABEL_KEY,
+  store: indexedCvStore,
+  applyBatches: esuSideBatches,
+  formatEntry: formatIndexedEntry,
+};
 
 export function parseIndexedKey(key: string): { cv31: number; cv32: number; cv: number } | null {
   const parts = key.split(".");

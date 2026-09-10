@@ -19,7 +19,6 @@ import { api } from "../api/client";
 import type { CatalogueVehicle } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { useCvRegistry } from "../cv/CvRegistry";
-import { indexedCvDiffs } from "../cv/indexedTable";
 import { filterLocos, locoPrimaryLabel, selectableLocos } from "../features/pickLoco";
 import { withQuery } from "../query";
 import { useConfirm } from "./ConfirmDialog";
@@ -38,7 +37,7 @@ const buttonSx = {
 export default function PickLocoButton() {
   const { t } = useTranslation();
   const { config, me } = useAuth();
-  const { diffs } = useCvRegistry();
+  const { hasPending, discard } = useCvRegistry();
   const { confirm, dialog } = useConfirm();
   const [params, setParams] = useSearchParams();
   const bigfred = config?.mode === "bigfred";
@@ -77,13 +76,14 @@ export default function PickLocoButton() {
 
   const pick = async (v: CatalogueVehicle) => {
     if (v.dccAddress == null) return;
-    if (diffs.length > 0 || indexedCvDiffs().length > 0) {
+    if (hasPending) {
       const ok = await confirm({
         title: t("changes.confirmDiscardTitle"),
         body: t("changes.confirmDiscardBody"),
         danger: true,
       });
       if (!ok) return;
+      discard();
     }
     setParams(withQuery(params, { address: String(v.dccAddress) }));
     setOpen(false);

@@ -84,9 +84,11 @@ Review filter — not a restatement of CODING-GUIDELINES.
 - **Direct CV ops.** Features compute on the frontend and call raw
   `cv.read` / `cv.write` / `cv.bitop`. Volume percent 0–100 lives in
   `volumeMap.ts`; Apply writes the mapped master CV. Mapping bits live in
-  `zimoMapping.ts` / `esuMapping.ts`; Apply writes staged CVs (ZIMO via
-  Zmiany; ESU indexed mapping via a page-local Apply that sets CV 31/32
-  first). DCC address is `address.set` (backend, ESU service-mode
+  `zimoMapping.ts` / `esuMapping.ts`; Apply writes staged CVs through
+  Zmiany. ZIMO uses the main table. ESU LokSound mapping registers a
+  page-scoped side table on `/mapping` so Apply can set CV 31/32 per
+  page; leaving `/mapping` with dirty mapping diffs asks to discard
+  that side only. DCC address is `address.set` (backend, ESU service-mode
   sequence); the address form Apply does not go through CvRegistry.
 - **Adapter.** dcc-bus frames and Z21 UDP hide behind `ProgrammingBus`.
 - **Errors.** Envelope `{error, detail}`. Forward BigFred / Z21 codes.
@@ -215,7 +217,8 @@ Named CV snapshots (**listy zmian**) are REST under `/api/v1/pc/changelists`
 (GET `?decoder=`, POST, PATCH `/:id`, DELETE `/:id`). `403 pc_disabled`
 when `enabled` is false. They live in SQLite, not the browser, so logout
 does not clear them. Lists are per decoder id (SPA sends
-`canonicalDecoderId`) and are shared on the hub.
+`canonicalDecoderId`) and are shared on the hub. A changelist payload is
+**main-table CVs only** — ESU indexed mapping is not serialised.
 
 ---
 
@@ -246,7 +249,7 @@ Unit tests: Vitest + Testing Library (`cd web && npm test`; `make test-web`).
 | `/speed` | same without `cv` | NMRA sliders, ZIMO drag charts, or LokSound v5 ESU charts; stages CVs. ZIMO and LokSound v5 `ensureRead` speed CVs on entry only when they are missing from the registry (prog/POM is transport, not a cache key). **Odczytaj** force-reads. |
 | `/address` | same without `cv` | DCC address. Read and Apply call the backend (`cv.read` / `address.set`) on the programming track; does not stage into CvRegistry. Read also fetches CV 28 (RailComPlus). Query `address` updates after a successful read or Apply. |
 | `/volume` | same without `cv` | Volume 0–100 stages the mapped master CV (`volumeMap` + `cv.read`) |
-| `/mapping` | same without `cv` | Output mapping. ZIMO MS/MN (`zimoMapping` + `CvRegistry`). ESU LokSound v4/v5 (`esuMapping` + indexed table keyed `16.{cv32}.{cv}`; page-local Apply writes CV 31, CV 32, then payload). Mapping groups / output-config tab read on demand — no full 1440-CV dump on entry. |
+| `/mapping` | same without `cv` | Output mapping. ZIMO MS/MN (`zimoMapping` + main `CvRegistry`). ESU LokSound v4/v5 (`esuMapping` + side table keyed `16.{cv32}.{cv}`, registered only while `/mapping` is mounted). Zmiany Apply writes main diffs first, then one `cv.write` per dirty page (`CV31`, `CV32`, payload). Mapping groups / output-config tab read on demand — no full 1440-CV dump on entry. Leaving `/mapping` with unsaved mapping diffs confirms and discards the side table only. |
 | `/backup` | `station`, `address`, `track` (no decoder required) | Dump / restore CVs; does not use CvRegistry |
 
 The shell is a Paperbase-style layout: dark left navigator, blue header,
@@ -265,12 +268,19 @@ wizard change (slider, chart drag, volume, ZIMO mapping)
 writes into the table; a locomotive **read** fills both the table and the
 baseline, so it is not a pending change. Address is not staged: **Ustaw
 adres** Apply sends `address.set` immediately. The left-nav **Zmiany** list is
-`table` minus `baseline`. **Zaaplikuj** sends one `cv.write` of those diffs.
-ESU function mapping uses a second table for indexed CVs 257–511 (they
-repeat on every CV 32 page). Those diffs are **not** in Zmiany; the
-mapping page Apply writes them per page.
-**Odrzuć** copies baseline over the table. The plus next to **Zmiany**
-saves the current diffs as a named changelist (POST). Left-nav **Lista
+`table` minus `baseline` for the main table, plus any **registered** side
+table. **Zaaplikuj** writes main diffs in one `cv.write`, then each
+active side’s batches (registration order).
+ESU function mapping uses a page-scoped side table for indexed CVs
+257–511 (they repeat on every CV 32 page). The mapping page registers
+`esu-indexed` on mount and unregisters on leave, so `/cv` never applies
+mapping windows. Dirty mapping on leave asks to discard that side only
+(main diffs stay). Baseline/cache stays in sessionStorage so a clean
+return does not re-dump already-read pages. Changelists and backup stay
+main-only — an ESU mapping edit cannot be saved as a changelist.
+**Odrzuć** in Zmiany copies baseline over the main table and every active
+side. The plus next to **Zmiany**
+saves the current **main** diffs as a named changelist (POST). Left-nav **Lista
 zmian** expands saved names; an arrow (or “Wczytaj do obecnych zmian”)
 merges those CVs into the session table (`setMany`). **Zastąp obecnymi
 zmianami** overwrites the saved snapshot (PATCH). Volume Apply writes the mapped
