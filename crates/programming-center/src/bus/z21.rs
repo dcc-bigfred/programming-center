@@ -14,7 +14,7 @@ use pc_proto::CvProgress;
 use crate::config::Config;
 use crate::error::ApiError;
 
-use super::z21_udp::{CvError, Observed, Z21Client};
+use super::z21_udp::{CvError, Observed, Z21Client, Z21RailcomSnap};
 use super::ProgrammingBus;
 
 const SETTLE: Duration = Duration::from_millis(300);
@@ -222,6 +222,24 @@ impl Z21Programmer {
         session
             .client
             .observe(until, cancel)
+            .await
+            .map_err(|err| match err {
+                CvError::Cancelled => ApiError::cancelled(),
+                other => map_unreachable(other),
+            })
+    }
+
+    /// Stream RailCom snapshots for `addr` until `cancel`.
+    pub async fn watch_railcom(
+        &self,
+        addr: u16,
+        cancel: &CancellationToken,
+        tx: mpsc::Sender<Z21RailcomSnap>,
+    ) -> Result<(), ApiError> {
+        let session = self.session(Some(cancel)).await?;
+        session
+            .client
+            .watch_railcom(addr, cancel, tx)
             .await
             .map_err(|err| match err {
                 CvError::Cancelled => ApiError::cancelled(),

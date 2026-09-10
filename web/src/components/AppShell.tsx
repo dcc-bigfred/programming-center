@@ -49,6 +49,8 @@ function titleFor(pathname: string, fallback: string | undefined, t: (key: strin
       return t("mapping.heading");
     case "/backup":
       return t("backup.heading");
+    case "/telemetry":
+      return t("telemetry.heading");
     case "/login":
       return t("login.heading");
     case "/auth/callback":

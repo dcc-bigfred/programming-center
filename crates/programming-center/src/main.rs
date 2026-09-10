@@ -11,6 +11,7 @@ mod error;
 mod http;
 mod models;
 mod schema;
+mod telemetry;
 mod ws;
 
 use std::net::SocketAddr;

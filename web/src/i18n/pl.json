@@ -36,6 +36,7 @@
   "nav": {
     "overview": "Strona główna",
     "programming": "Programowanie",
+    "telemetry": "Telemetria",
     "changeLists": "Listy zmian",
     "changes": "Zmiany",
     "featureUnavailable": "Niedostępne dla tego dekodera"
@@ -339,6 +340,39 @@
         "powerPack": "PowerPack"
       }
     }
+  },
+  "telemetry": {
+    "heading": "Telemetria",
+    "railcomHint": "Telemetria wyświetli się jedynie, gdy centralka oraz pojazd mają włączone RailCom",
+    "needAddress": "Wybierz adres pojazdu w nagłówku, aby obserwować telemetrię.",
+    "z21Only": "Podgląd RailCom wymaga bezpośredniego połączenia Z21 (programmingMode z21).",
+    "address": "Adres",
+    "speed": "Prędkość",
+    "speedUnit": "km/h",
+    "qos": "Jakość odbioru",
+    "load": "Obciążenie",
+    "speed128": "Prędkość (128)",
+    "location": "Adres lokalizacji",
+    "temperature": "Temperatura",
+    "tempUnit": "°C",
+    "voltage": "Napięcie toru",
+    "voltageUnit": "V",
+    "warning": "Ostrzeżenie",
+    "info1": "Info 1",
+    "orientation": "Polaryzacja toru",
+    "positive": "dodatnia",
+    "negative": "ujemna",
+    "travel": "Kierunek jazdy",
+    "travelNeg": "ujemny",
+    "travelPos": "dodatni",
+    "moving": "W ruchu",
+    "consist": "W składzie",
+    "requestCh2": "Żądanie kanału 2",
+    "yes": "tak",
+    "no": "nie",
+    "dynHint": "Z21 LAN przekazuje tylko prędkość i jakość odbioru. Pozostałe pola pojawią się, gdy źródło poda pełny kanał RailCom (DYN).",
+    "empty": "—",
+    "waiting": "Oczekiwanie na dane RailCom…"
   },
   "backup": {
     "heading": "Kopia zapasowa",

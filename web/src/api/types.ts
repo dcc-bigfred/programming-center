@@ -73,6 +73,28 @@ export interface ChangeList {
 
 export type Track = "prog" | "pom";
 
+export interface TelemetryInfo1 {
+  orientationPositive: boolean;
+  travelNegative: boolean;
+  moving: boolean;
+  consist: boolean;
+  requestChannel2: boolean;
+}
+
+export interface TelemetryUpdate {
+  address: number;
+  speedKmh?: number;
+  qosPercent?: number;
+  load?: number;
+  speed128?: number;
+  tanks?: Array<number | null>;
+  locationAddress?: number;
+  temperatureC?: number;
+  trackVoltageMv?: number;
+  warning?: number;
+  info1?: TelemetryInfo1;
+}
+
 export interface Ack {
   ok: boolean;
   error?: string;

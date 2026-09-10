@@ -12,6 +12,7 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import HomeIcon from "@mui/icons-material/Home";
 import MemoryIcon from "@mui/icons-material/Memory";
+import SensorsIcon from "@mui/icons-material/Sensors";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 
@@ -169,6 +170,26 @@ export default function Navigator({ showSession = true, onNavigate, ...other }: 
                 );
               })}
               <ChangeListsNav decoderId={decoder?.id} />
+              <Divider sx={{ mt: 2 }} />
+              <ListItem sx={{ py: 2, px: 3 }}>
+                <ListItemText sx={{ color: "rgba(255,255,255,0.7)" }}>
+                  {t("nav.telemetry")}
+                </ListItemText>
+              </ListItem>
+              <ListItem disablePadding>
+                <ListItemButton
+                  component={Link}
+                  to={{ pathname: "/telemetry", search: withQuery(params, { cv: null }).toString() }}
+                  selected={location.pathname === "/telemetry"}
+                  onClick={onNavigate}
+                  sx={item}
+                >
+                  <ListItemIcon>
+                    <SensorsIcon />
+                  </ListItemIcon>
+                  <ListItemText>{t("telemetry.heading")}</ListItemText>
+                </ListItemButton>
+              </ListItem>
               <Divider sx={{ mt: 2 }} />
               <ChangesPanel />
             </Box>

@@ -10,6 +10,9 @@ import {
   RAILCOM_PLUS_CV,
   RAILCOM_PLUS_MASK,
   SHORT_MAX,
+  TYPE_TELEMETRY_CANCEL,
+  TYPE_TELEMETRY_SUBSCRIBE,
+  TYPE_TELEMETRY_UPDATE,
 } from "./proto-constants";
 
 // These assertions pin the wire contract to the Rust proto. If you change a
@@ -39,5 +42,12 @@ describe("proto-constants mirror the Rust crates", () => {
     expect(ERROR_CODES.CANCELLED).toBe("cancelled");
     expect(ERROR_CODES.BAD_PAYLOAD).toBe("bad_payload");
     expect(ERROR_CODES.UNKNOWN_COMMAND).toBe("unknown_command");
+    expect(ERROR_CODES.Z21_REQUIRED).toBe("z21_required");
+  });
+
+  it("matches pc-proto telemetry types", () => {
+    expect(TYPE_TELEMETRY_SUBSCRIBE).toBe("telemetry.subscribe");
+    expect(TYPE_TELEMETRY_CANCEL).toBe("telemetry.cancel");
+    expect(TYPE_TELEMETRY_UPDATE).toBe("telemetry.update");
   });
 });

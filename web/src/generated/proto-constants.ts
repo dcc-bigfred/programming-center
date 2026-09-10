@@ -19,6 +19,10 @@ export const RAILCOM_PLUS_BIT = 7;
 export const RAILCOM_PLUS_MASK = 1 << RAILCOM_PLUS_BIT;
 export const RAILCOM_ADDRS_MAX = 8;
 
+export const TYPE_TELEMETRY_SUBSCRIBE = "telemetry.subscribe";
+export const TYPE_TELEMETRY_CANCEL = "telemetry.cancel";
+export const TYPE_TELEMETRY_UPDATE = "telemetry.update";
+
 /** `Ack.error` codes — keep in sync with `pc-proto::CODE_*`. */
 export const ERROR_CODES = {
   PC_DISABLED: "pc_disabled",
@@ -29,6 +33,7 @@ export const ERROR_CODES = {
   CANCELLED: "cancelled",
   BAD_PAYLOAD: "bad_payload",
   UNKNOWN_COMMAND: "unknown_command",
+  Z21_REQUIRED: "z21_required",
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];

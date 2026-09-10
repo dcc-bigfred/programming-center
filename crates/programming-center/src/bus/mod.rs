@@ -21,7 +21,7 @@ use crate::error::ApiError;
 
 pub use dcc_bus::DccBusProgrammer;
 pub use z21::Z21Programmer;
-pub use z21_udp::Observed;
+pub use z21_udp::{Observed, Z21RailcomSnap};
 
 /// Standalone read: stream `CvProgress` and honour cancel between CVs.
 pub struct CvReadReport {
@@ -146,6 +146,20 @@ impl Hub {
                 }
             },
             ProgrammingMode::Bigfred => None,
+        }
+    }
+
+    /// Z21 only: stream RailCom snapshots for one locomotive.
+    pub async fn watch_railcom(
+        &self,
+        mode: ProgrammingMode,
+        addr: u16,
+        cancel: &CancellationToken,
+        tx: mpsc::Sender<Z21RailcomSnap>,
+    ) -> Result<(), ApiError> {
+        match mode {
+            ProgrammingMode::Z21 => self.z21.watch_railcom(addr, cancel, tx).await,
+            ProgrammingMode::Bigfred => Err(ApiError::bad_request("z21_required")),
         }
     }
 }

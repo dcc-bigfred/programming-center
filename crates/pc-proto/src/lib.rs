@@ -194,6 +194,68 @@ pub struct AddressSetPayload {
     pub railcom_plus: Option<bool>,
 }
 
+/// `telemetry.subscribe` — watch RailCom DYN for one locomotive (Z21 LAN).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TelemetrySubscribePayload {
+    #[serde(default)]
+    pub station_id: Option<u64>,
+    /// DCC locomotive address (1–10239).
+    pub address: u16,
+}
+
+/// Channel-1 ID 3 flags (RCN-217 Table 12), when present.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TelemetryInfo1 {
+    pub orientation_positive: bool,
+    pub travel_negative: bool,
+    pub moving: bool,
+    pub consist: bool,
+    pub request_channel2: bool,
+}
+
+/// One RailCom snapshot (`telemetry.update`, same `id` as the subscribe).
+///
+/// Z21 LAN `0x88` fills `address` / `speed_kmh` / `qos_percent` only. The remaining
+/// RCN-217 Table 13 fields stay in the wire schema for a future non-Z21 source.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TelemetryUpdate {
+    /// DCC locomotive address.
+    pub address: u16,
+    /// True speed in km/h (DYN 0 / 1).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speed_kmh: Option<u16>,
+    /// Reception quality 0–100 (DYN 7).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub qos_percent: Option<u8>,
+    /// Load 0–127 (DYN 2, bit 7 clear).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub load: Option<u8>,
+    /// Speed in 128 steps, 0–127 (DYN 2, bit 7 set).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speed_128: Option<u8>,
+    /// Tank 1–12 contents in percent (DYN 8–19). Omitted when every slot is empty.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tanks: Option<[Option<u8>; 12]>,
+    /// Location address (DYN 20 / EXT ID 3).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location_address: Option<u16>,
+    /// Temperature in °C (DYN 26).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temperature_c: Option<i16>,
+    /// Track voltage in millivolts (DYN 46).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub track_voltage_mv: Option<u16>,
+    /// Warning / alarm byte (DYN 21).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub warning: Option<u8>,
+    /// Channel-1 Info1 (ID 3).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub info1: Option<TelemetryInfo1>,
+}
+
 /// One step of a standalone `cv.read` (same `id` as the request).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -255,6 +317,9 @@ pub const TYPE_CV_PROGRESS: &str = "cv.progress";
 pub const TYPE_CV_WRITE: &str = "cv.write";
 pub const TYPE_CV_BITOP: &str = "cv.bitop";
 pub const TYPE_ADDRESS_SET: &str = "address.set";
+pub const TYPE_TELEMETRY_SUBSCRIBE: &str = "telemetry.subscribe";
+pub const TYPE_TELEMETRY_CANCEL: &str = "telemetry.cancel";
+pub const TYPE_TELEMETRY_UPDATE: &str = "telemetry.update";
 pub const TYPE_AUTH: &str = "auth";
 pub const TYPE_ACK: &str = "ack";
 
@@ -268,6 +333,7 @@ pub const CODE_PROGRAMMING_FAILED: &str = "programming_failed";
 pub const CODE_CANCELLED: &str = "cancelled";
 pub const CODE_BAD_PAYLOAD: &str = "bad_payload";
 pub const CODE_UNKNOWN_COMMAND: &str = "unknown_command";
+pub const CODE_Z21_REQUIRED: &str = "z21_required";
 
 #[cfg(test)]
 mod tests {
@@ -304,6 +370,10 @@ mod tests {
         assert_eq!(TYPE_CV_PROGRESS, "cv.progress");
         assert_eq!(TYPE_CV_READ_CANCEL, "cv.read.cancel");
         assert_eq!(TYPE_ADDRESS_SET, "address.set");
+        assert_eq!(TYPE_TELEMETRY_SUBSCRIBE, "telemetry.subscribe");
+        assert_eq!(TYPE_TELEMETRY_CANCEL, "telemetry.cancel");
+        assert_eq!(TYPE_TELEMETRY_UPDATE, "telemetry.update");
+        assert_eq!(CODE_Z21_REQUIRED, "z21_required");
     }
 
     #[test]
@@ -313,6 +383,58 @@ mod tests {
         assert_eq!(p.long_bit, 5);
         assert_eq!(p.address, 0);
         assert_eq!(p.railcom_plus, None);
+    }
+
+    #[test]
+    fn telemetry_update_omits_empty_fields() {
+        let u = TelemetryUpdate {
+            address: 13,
+            speed_kmh: Some(80),
+            ..TelemetryUpdate::default()
+        };
+        let v = serde_json::to_value(&u).unwrap();
+        assert_eq!(v["address"], 13);
+        assert_eq!(v["speedKmh"], 80);
+        assert!(v.get("qosPercent").is_none());
+        assert!(v.get("load").is_none());
+        assert!(v.get("tanks").is_none());
+        assert!(v.get("info1").is_none());
+    }
+
+    #[test]
+    fn telemetry_update_serialises_table13() {
+        let mut tanks = [None; 12];
+        tanks[0] = Some(40);
+        tanks[11] = Some(99);
+        let u = TelemetryUpdate {
+            address: 13,
+            load: Some(5),
+            speed_128: Some(64),
+            tanks: Some(tanks),
+            location_address: Some(0x123),
+            temperature_c: Some(21),
+            track_voltage_mv: Some(14_500),
+            warning: Some(3),
+            info1: Some(TelemetryInfo1 {
+                orientation_positive: true,
+                moving: true,
+                ..TelemetryInfo1::default()
+            }),
+            ..TelemetryUpdate::default()
+        };
+        let v = serde_json::to_value(&u).unwrap();
+        assert_eq!(v["load"], 5);
+        assert_eq!(v["speed128"], 64);
+        assert_eq!(v["tanks"][0], 40);
+        assert!(v["tanks"][1].is_null());
+        assert_eq!(v["tanks"][11], 99);
+        assert_eq!(v["locationAddress"], 0x123);
+        assert_eq!(v["temperatureC"], 21);
+        assert_eq!(v["trackVoltageMv"], 14_500);
+        assert_eq!(v["warning"], 3);
+        assert_eq!(v["info1"]["orientationPositive"], true);
+        assert_eq!(v["info1"]["moving"], true);
+        assert_eq!(v["info1"]["travelNegative"], false);
     }
 
     #[test]

@@ -1,5 +1,5 @@
 import { ApiError } from "./client";
-import type { Ack, CvEntry, Track } from "./types";
+import type { Ack, CvEntry, TelemetryUpdate, Track } from "./types";
 import { flushCvTable, rememberRead } from "../cv/table";
 import {
   applyProgressFrame,
@@ -18,6 +18,9 @@ const TYPE_CV_PROGRESS = "cv.progress";
 const TYPE_CV_WRITE = "cv.write";
 const TYPE_CV_BITOP = "cv.bitop";
 const TYPE_ADDRESS_SET = "address.set";
+const TYPE_TELEMETRY_SUBSCRIBE = "telemetry.subscribe";
+const TYPE_TELEMETRY_CANCEL = "telemetry.cancel";
+const TYPE_TELEMETRY_UPDATE = "telemetry.update";
 
 const REQUEST_IDLE_MS = 30_000;
 
@@ -27,7 +30,7 @@ interface Envelope {
   payload?: unknown;
 }
 
-type PendingKind = "read" | "write";
+type PendingKind = "read" | "write" | "telemetry";
 
 type OverlayMode = "read" | "write";
 
@@ -43,6 +46,7 @@ type Pending = {
   reject: (err: Error) => void;
   touch: () => void;
   idleTimer: number | null;
+  onTelemetry?: (update: TelemetryUpdate) => void;
 };
 
 function wsUrl(): string {
@@ -113,7 +117,12 @@ export class ProgrammingClient {
   }
 
   connect(token: string | null): void {
-    if (this.socket && this.wantedToken === token && this.socket.readyState === WebSocket.OPEN) {
+    const live = this.socket;
+    if (
+      live &&
+      this.wantedToken === token &&
+      (live.readyState === WebSocket.OPEN || live.readyState === WebSocket.CONNECTING)
+    ) {
       return;
     }
     this.wantedToken = token;
@@ -279,6 +288,24 @@ export class ProgrammingClient {
     return { cvs: ack.cvs ?? [], errors: ack.errors ?? [] };
   }
 
+  /** Live RailCom snapshots until `signal` aborts (sends `telemetry.cancel`). */
+  async telemetrySubscribe(
+    input: { stationId?: number; address: number },
+    onUpdate: (update: TelemetryUpdate) => void,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    await this.enqueueRead(() =>
+      this.request(
+        TYPE_TELEMETRY_SUBSCRIBE,
+        { stationId: input.stationId, address: input.address },
+        "telemetry",
+        signal,
+        undefined,
+        onUpdate,
+      ),
+    );
+  }
+
   private async runRead(
     outer: AbortSignal | undefined,
     fn: (signal: AbortSignal) => Promise<Ack>,
@@ -348,7 +375,12 @@ export class ProgrammingClient {
       this.progress = null;
     }
     if (this.socket?.readyState === WebSocket.OPEN) {
-      const type = kind === "write" ? TYPE_CV_WRITE_CANCEL : TYPE_CV_READ_CANCEL;
+      const type =
+        kind === "write"
+          ? TYPE_CV_WRITE_CANCEL
+          : kind === "telemetry"
+            ? TYPE_TELEMETRY_CANCEL
+            : TYPE_CV_READ_CANCEL;
       try {
         this.socket.send(JSON.stringify({ type, id }));
       } catch {
@@ -364,6 +396,7 @@ export class ProgrammingClient {
     kind: PendingKind,
     signal?: AbortSignal,
     read?: { liveApply: boolean; cvs: number[] },
+    onTelemetry?: (update: TelemetryUpdate) => void,
   ): Promise<Ack> {
     if (signal?.aborted) throw cancelled();
     this.connect(this.wantedToken ?? null);
@@ -378,7 +411,9 @@ export class ProgrammingClient {
       const pending: Pending = {
         kind,
         idleTimer: null,
+        onTelemetry,
         touch: () => {
+          if (kind === "telemetry") return;
           if (pending.idleTimer !== null) window.clearTimeout(pending.idleTimer);
           pending.idleTimer = window.setTimeout(() => {
             this.pending.delete(id);
@@ -482,6 +517,10 @@ export class ProgrammingClient {
     }
     if (env.type === TYPE_CV_PROGRESS && env.id) {
       this.onProgress(env.id, env.payload);
+      return;
+    }
+    if (env.type === TYPE_TELEMETRY_UPDATE && env.id) {
+      this.pending.get(env.id)?.onTelemetry?.(env.payload as TelemetryUpdate);
       return;
     }
     if (env.type !== TYPE_ACK || !env.id) {

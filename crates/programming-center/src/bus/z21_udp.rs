@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use dcc_bigfred_proto_z21 as z21;
 use tokio::net::UdpSocket;
-use tokio::sync::Mutex;
+use tokio::sync::{mpsc, Mutex};
 use tokio::time::{timeout, Instant};
 use tokio_util::sync::CancellationToken;
 
@@ -13,6 +13,16 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 const HELLO_TIMEOUT: Duration = Duration::from_secs(3);
 /// Driving + system state + all locos + RailCom for all locos (FW 1.29+).
 const BROADCAST_FLAGS: u32 = 0x0005_0101;
+/// LAN_RAILCOM_GETDATA poll while a telemetry subscribe is open.
+const RAILCOM_POLL: Duration = Duration::from_millis(250);
+
+/// LAN `0x88` fields we surface. Speed is DYN 0/1, QoS is DYN 7; Table 13 is not on this path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Z21RailcomSnap {
+    pub address: u16,
+    pub speed_kmh: Option<u16>,
+    pub qos_percent: Option<u8>,
+}
 
 /// Unsolicited programming-track / RailCom traffic while waiting to leave service mode.
 ///
@@ -211,7 +221,69 @@ impl Z21Client {
         }
     }
 
-    /// Send `cmd` and await its reply, retrying **once** on timeout.
+    /// Poll `LAN_RAILCOM_GETDATA` and push matching snapshots until `cancel`.
+    ///
+    /// Holds the programming slot so CV I/O cannot race the same UDP socket.
+    pub async fn watch_railcom(
+        &self,
+        addr: u16,
+        cancel: &CancellationToken,
+        tx: mpsc::Sender<Z21RailcomSnap>,
+    ) -> Result<(), CvError> {
+        let _g = tokio::select! {
+            () = cancel.cancelled() => return Err(CvError::Cancelled),
+            g = self.slot.lock() => g,
+        };
+        let mut codec = z21::Client::new();
+        let mut buf = [0u8; 1500];
+        loop {
+            if cancel.is_cancelled() {
+                self.drain();
+                return Err(CvError::Cancelled);
+            }
+            let mut pkt = z21::WireBuf::new();
+            z21::encode_railcom_get_data(&mut pkt, 0x01, addr).map_err(map_encode)?;
+            self.sock.send(pkt.as_slice()).await?;
+            let deadline = Instant::now() + RAILCOM_POLL;
+            loop {
+                if cancel.is_cancelled() {
+                    self.drain();
+                    return Err(CvError::Cancelled);
+                }
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                if remaining.is_zero() {
+                    break;
+                }
+                let recv = timeout(remaining, self.sock.recv(&mut buf));
+                let n = tokio::select! {
+                    () = cancel.cancelled() => {
+                        self.drain();
+                        return Err(CvError::Cancelled);
+                    }
+                    got = recv => match got {
+                        Ok(Ok(n)) => n,
+                        Ok(Err(err)) => return Err(err.into()),
+                        Err(_) => break,
+                    },
+                };
+                let snap = apply_railcom(&mut codec, &buf[..n]);
+                tracing::debug!(
+                    peer = %self.peer,
+                    want = addr,
+                    n,
+                    dump = %hex_dump(&buf[..n]),
+                    snap = ?snap,
+                    "z21 railcom rx"
+                );
+                if let Some(snap) = snap {
+                    if snap.address == addr && tx.send(snap).await.is_err() {
+                        self.drain();
+                        return Err(CvError::Cancelled);
+                    }
+                }
+            }
+        }
+    }
     ///
     /// The single retry is a reliability policy for noisy Z21 LAN links. It is
     /// safe because `await_result` calls `drain()` on timeout, so a late reply
@@ -396,8 +468,15 @@ fn cmd_label(cmd: &z21::Command) -> &'static str {
 }
 
 fn hex_preview(buf: &[u8]) -> String {
-    const N: usize = 16;
-    let n = buf.len().min(N);
+    hex_bytes(buf, 16)
+}
+
+fn hex_dump(buf: &[u8]) -> String {
+    hex_bytes(buf, 64)
+}
+
+fn hex_bytes(buf: &[u8], max: usize) -> String {
+    let n = buf.len().min(max);
     let mut out = String::with_capacity(n * 3);
     for (i, b) in buf[..n].iter().enumerate() {
         if i > 0 {
@@ -405,7 +484,7 @@ fn hex_preview(buf: &[u8]) -> String {
         }
         out.push_str(&format!("{b:02x}"));
     }
-    if buf.len() > N {
+    if buf.len() > max {
         out.push('…');
     }
     out
@@ -414,6 +493,20 @@ fn hex_preview(buf: &[u8]) -> String {
 fn ingest(buf: &[u8], out: &mut Observed) {
     let mut codec = z21::Client::new();
     codec.on_bytes(buf, &mut |ev| ingest_event(ev, out));
+}
+
+fn apply_railcom(codec: &mut z21::Client, buf: &[u8]) -> Option<Z21RailcomSnap> {
+    let mut snap = None;
+    codec.on_bytes_with_railcom(buf, &mut |_| {}, &mut |d| {
+        if let Some(address) = d.address {
+            snap = Some(Z21RailcomSnap {
+                address,
+                speed_kmh: d.speed_kmh,
+                qos_percent: d.qos_percent,
+            });
+        }
+    });
+    snap
 }
 
 fn ingest_event(ev: z21::Event, out: &mut Observed) {
@@ -476,8 +569,7 @@ mod tests {
         let mut pkt = [0u8; 17];
         pkt[0] = 0x11;
         pkt[2] = 0x88;
-        pkt[4] = 13;
-        pkt[5] = 0;
+        pkt[4..6].copy_from_slice(&13u16.to_be_bytes());
         let mut got = Observed::default();
         ingest(&pkt, &mut got);
         assert_eq!(got.railcom.as_slice(), &[13]);
@@ -503,7 +595,7 @@ mod tests {
         let mut railcom = [0u8; 17];
         railcom[0] = 0x11;
         railcom[2] = 0x88;
-        railcom[4] = 13;
+        railcom[4..6].copy_from_slice(&13u16.to_be_bytes());
         let mut sys = [0u8; 20];
         sys[0] = 0x14;
         sys[2] = 0x84;
@@ -529,11 +621,66 @@ mod tests {
             let mut pkt = [0u8; 17];
             pkt[0] = 0x11;
             pkt[2] = 0x88;
-            pkt[4] = i as u8;
-            pkt[5] = (i >> 8) as u8;
+            pkt[4..6].copy_from_slice(&i.to_be_bytes());
             ingest(&pkt, &mut got);
         }
         assert_eq!(got.railcom.len(), z21::RAILCOM_ADDRS_MAX);
         assert_eq!(got.railcom.as_slice(), &[1, 2, 3, 4, 5, 6, 7, 8]);
+    }
+
+    #[test]
+    fn apply_railcom_address_is_high_byte_first() {
+        let mut codec = z21::Client::new();
+        let mut pkt = [0u8; 17];
+        pkt[0] = 0x11;
+        pkt[2] = 0x88;
+        pkt[4] = 0x26;
+        pkt[5] = 0x02;
+        let snap = apply_railcom(&mut codec, &pkt).expect("snapshot");
+        assert_eq!(snap.address, 9730);
+    }
+
+    fn lan_railcom_frame(addr: u16, options: u8, speed: u8, qos: u8) -> [u8; 17] {
+        let mut pkt = [0u8; 17];
+        pkt[0] = 0x11;
+        pkt[2] = 0x88;
+        pkt[4..6].copy_from_slice(&addr.to_be_bytes());
+        pkt[13] = options;
+        pkt[14] = speed;
+        pkt[15] = qos;
+        pkt
+    }
+
+    #[test]
+    fn apply_railcom_maps_speed_and_qos() {
+        let mut codec = z21::Client::new();
+        let snap = apply_railcom(
+            &mut codec,
+            &lan_railcom_frame(13, z21::RCO_SPEED1 | z21::RCO_QOS, 80, 12),
+        )
+        .expect("snapshot");
+        assert_eq!(snap.address, 13);
+        assert_eq!(snap.speed_kmh, Some(80));
+        assert_eq!(snap.qos_percent, Some(12));
+    }
+
+    #[test]
+    fn apply_railcom_is_per_loco() {
+        let mut codec = z21::Client::new();
+        let first = apply_railcom(&mut codec, &lan_railcom_frame(13, z21::RCO_SPEED1, 80, 0))
+            .expect("loco 13");
+        assert_eq!(first.address, 13);
+        assert_eq!(first.speed_kmh, Some(80));
+        assert_eq!(first.qos_percent, None);
+        let second =
+            apply_railcom(&mut codec, &lan_railcom_frame(7, z21::RCO_QOS, 0, 12)).expect("loco 7");
+        assert_eq!(second.address, 7);
+        assert_eq!(second.speed_kmh, None);
+        assert_eq!(second.qos_percent, Some(12));
+        let again = apply_railcom(&mut codec, &lan_railcom_frame(13, z21::RCO_QOS, 0, 3))
+            .expect("loco 13 qos");
+        assert_eq!(again.address, 13);
+        assert_eq!(again.speed_kmh, Some(80));
+        assert_eq!(again.qos_percent, Some(3));
     }
 }

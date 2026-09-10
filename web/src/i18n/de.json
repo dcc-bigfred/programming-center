@@ -36,6 +36,7 @@
   "nav": {
     "overview": "Startseite",
     "programming": "Programmierung",
+    "telemetry": "Telemetrie",
     "changeLists": "Änderungslisten",
     "changes": "Änderungen",
     "featureUnavailable": "Für diesen Decoder nicht verfügbar"
@@ -339,6 +340,39 @@
         "powerPack": "PowerPack"
       }
     }
+  },
+  "telemetry": {
+    "heading": "Telemetrie",
+    "railcomHint": "Telemetrie erscheint nur, wenn Zentrale und Fahrzeug RailCom eingeschaltet haben",
+    "needAddress": "Wähle im Kopf eine Fahrzeugadresse, um Telemetrie zu beobachten.",
+    "z21Only": "Die RailCom-Liveansicht braucht eine direkte Z21-Verbindung (programmingMode z21).",
+    "address": "Adresse",
+    "speed": "Geschwindigkeit",
+    "speedUnit": "km/h",
+    "qos": "Empfangsqualität",
+    "load": "Last",
+    "speed128": "Geschwindigkeit (128)",
+    "location": "Standortadresse",
+    "temperature": "Temperatur",
+    "tempUnit": "°C",
+    "voltage": "Gleisspannung",
+    "voltageUnit": "V",
+    "warning": "Warnung",
+    "info1": "Info 1",
+    "orientation": "Gleispolarität",
+    "positive": "positiv",
+    "negative": "negativ",
+    "travel": "Fahrtrichtung",
+    "travelNeg": "negativ",
+    "travelPos": "positiv",
+    "moving": "In Fahrt",
+    "consist": "Traktion",
+    "requestCh2": "Kanal-2-Anforderung",
+    "yes": "ja",
+    "no": "nein",
+    "dynHint": "Z21-LAN überträgt nur Geschwindigkeit und Empfangsqualität. Die übrigen Felder erscheinen, wenn eine Quelle den vollen RailCom-Kanal (DYN) liefert.",
+    "empty": "—",
+    "waiting": "Warte auf RailCom-Daten…"
   },
   "backup": {
     "heading": "Datensicherung",

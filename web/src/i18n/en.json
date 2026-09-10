@@ -36,6 +36,7 @@
   "nav": {
     "overview": "Home",
     "programming": "Programming",
+    "telemetry": "Telemetry",
     "changeLists": "Change lists",
     "changes": "Changes",
     "featureUnavailable": "Not available for this decoder"
@@ -339,6 +340,39 @@
         "powerPack": "PowerPack"
       }
     }
+  },
+  "telemetry": {
+    "heading": "Telemetry",
+    "railcomHint": "Telemetry appears only when both the command station and the locomotive have RailCom enabled",
+    "needAddress": "Pick a locomotive address in the header to watch telemetry.",
+    "z21Only": "RailCom live view needs a direct Z21 connection (programmingMode z21).",
+    "address": "Address",
+    "speed": "Speed",
+    "speedUnit": "km/h",
+    "qos": "Reception quality",
+    "load": "Load",
+    "speed128": "Speed (128)",
+    "location": "Location address",
+    "temperature": "Temperature",
+    "tempUnit": "°C",
+    "voltage": "Track voltage",
+    "voltageUnit": "V",
+    "warning": "Warning",
+    "info1": "Info 1",
+    "orientation": "Track polarity",
+    "positive": "positive",
+    "negative": "negative",
+    "travel": "Travel direction",
+    "travelNeg": "negative",
+    "travelPos": "positive",
+    "moving": "Moving",
+    "consist": "Consist",
+    "requestCh2": "Channel 2 request",
+    "yes": "yes",
+    "no": "no",
+    "dynHint": "Z21 LAN forwards only speed and reception quality. The other fields appear when a source supplies the full RailCom channel (DYN).",
+    "empty": "—",
+    "waiting": "Waiting for RailCom data…"
   },
   "backup": {
     "heading": "Backup",
