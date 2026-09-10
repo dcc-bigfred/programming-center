@@ -267,14 +267,6 @@ impl Z21Client {
                     },
                 };
                 let snap = apply_railcom(&mut codec, &buf[..n]);
-                tracing::debug!(
-                    peer = %self.peer,
-                    want = addr,
-                    n,
-                    dump = %hex_dump(&buf[..n]),
-                    snap = ?snap,
-                    "z21 railcom rx"
-                );
                 if let Some(snap) = snap {
                     if snap.address == addr && tx.send(snap).await.is_err() {
                         self.drain();
@@ -469,10 +461,6 @@ fn cmd_label(cmd: &z21::Command) -> &'static str {
 
 fn hex_preview(buf: &[u8]) -> String {
     hex_bytes(buf, 16)
-}
-
-fn hex_dump(buf: &[u8]) -> String {
-    hex_bytes(buf, 64)
 }
 
 fn hex_bytes(buf: &[u8], max: usize) -> String {
