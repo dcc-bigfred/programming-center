@@ -99,7 +99,14 @@
     "readOnly": "Read only",
     "bitOff": "0 — {{label}}",
     "bitOn": "1 — {{label}}",
-    "groupMeta": "{{count}} CVs · {{ranges}}"
+    "groupMeta": "{{count}} CVs · {{ranges}}",
+    "filter": "Filter",
+    "filterHint": "CV number, value, or description",
+    "filterEmpty": "No matching CVs",
+    "setFromText": "Set from text",
+    "setFromTextTitle": "Set CVs from text",
+    "setFromTextApply": "Add to change list",
+    "setFromTextParseError": "Invalid line: {{line}}"
   },
   "speed": {
     "heading": "Speed control",

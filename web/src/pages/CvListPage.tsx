@@ -1,6 +1,10 @@
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Collapse from "@mui/material/Collapse";
+import Dialog from "@mui/material/Dialog";
+import DialogActions from "@mui/material/DialogActions";
+import DialogContent from "@mui/material/DialogContent";
+import DialogTitle from "@mui/material/DialogTitle";
 import FormControl from "@mui/material/FormControl";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import FormLabel from "@mui/material/FormLabel";
@@ -12,6 +16,7 @@ import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import PlaylistAddIcon from "@mui/icons-material/PlaylistAdd";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Navigate, useSearchParams } from "react-router-dom";
@@ -23,6 +28,8 @@ import ErrorAlert from "../components/ErrorAlert";
 import { getDecoder } from "../decoders/registry";
 import type { CvItem } from "../decoders/types";
 import { useCvRegistry } from "../cv/CvRegistry";
+import { cvMatchesFilter } from "../features/cvListFilter";
+import { parseCvBackup } from "../features/cvBackup";
 import { optionalT } from "../i18n";
 import { addressNumber, readQuery, stationNumber, withQuery } from "../query";
 import { useAuth } from "../auth/AuthContext";
@@ -133,6 +140,9 @@ export default function CvListPage() {
   const decoder = getDecoder(query.decoder);
   const [rows, setRows] = useState<Record<number, RowState>>({});
   const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set());
+  const [filter, setFilter] = useState("");
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [paste, setPaste] = useState("");
 
   const openCv = query.cv ? Number(query.cv) : NaN;
   const session = useMemo(
@@ -144,14 +154,47 @@ export default function CvListPage() {
     [config?.stationPicker, query.station, query.address, query.track],
   );
   const sections = useMemo(() => sectionsFrom(decoder?.cvs ?? []), [decoder]);
+  const filtering = filter.trim() !== "";
+  const visibleSections = useMemo(() => {
+    if (!filtering) return sections;
+    const out: ListSection[] = [];
+    for (const section of sections) {
+      if (section.kind === "cv") {
+        const description = optionalT(section.item.descriptionKey, section.item.descriptionParams);
+        const value = registry.get(section.item.cv) ?? rows[section.item.cv]?.value;
+        if (cvMatchesFilter(section.item, filter, value, description)) {
+          out.push(section);
+        }
+        continue;
+      }
+      const items = section.items.filter((item) => {
+        const description = optionalT(item.descriptionKey, item.descriptionParams);
+        const value = registry.get(item.cv) ?? rows[item.cv]?.value;
+        return cvMatchesFilter(item, filter, value, description);
+      });
+      if (items.length > 0) {
+        out.push({ kind: "group", groupKey: section.groupKey, items });
+      }
+    }
+    return out;
+  }, [filtering, filter, sections, registry, rows]);
 
   useEffect(() => {
     setOpenGroups(new Set());
+    setFilter("");
+    setPasteOpen(false);
+    setPaste("");
   }, [decoder?.id]);
 
   if (!decoder) {
     return <Navigate to={{ pathname: "/", search: params.toString() }} replace />;
   }
+
+  const pasted = parseCvBackup(paste);
+  const closePaste = () => {
+    setPasteOpen(false);
+    setPaste("");
+  };
 
   const toggle = (cv: number) => {
     const next = openCv === cv ? null : String(cv);
@@ -303,12 +346,70 @@ export default function CvListPage() {
   return (
     <AppShell>
       <Stack spacing={1}>
-        {sections.map((section) => {
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={1} alignItems={{ sm: "stretch" }}>
+          <TextField
+            fullWidth
+            autoComplete="off"
+            label={t("cv.filter")}
+            placeholder={t("cv.filterHint")}
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            sx={{ "& .MuiInputBase-root": { minHeight: 48 } }}
+          />
+          <Button
+            variant="outlined"
+            startIcon={<PlaylistAddIcon />}
+            onClick={() => {
+              setPaste("");
+              setPasteOpen(true);
+            }}
+            sx={{ minHeight: 48, flexShrink: 0, whiteSpace: "nowrap" }}
+          >
+            {t("cv.setFromText")}
+          </Button>
+        </Stack>
+        <Dialog open={pasteOpen} onClose={closePaste} fullWidth maxWidth="sm">
+          <DialogTitle>{t("cv.setFromTextTitle")}</DialogTitle>
+          <DialogContent>
+            <TextField
+              autoFocus
+              fullWidth
+              multiline
+              minRows={8}
+              margin="dense"
+              placeholder={"cv5=5\ncv3=1"}
+              value={paste}
+              onChange={(e) => setPaste(e.target.value)}
+            />
+            {pasted.errorLine ? (
+              <Typography color="error" sx={{ mt: 1 }}>
+                {t("cv.setFromTextParseError", { line: pasted.errorLine })}
+              </Typography>
+            ) : null}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={closePaste}>{t("confirm.cancel")}</Button>
+            <Button
+              variant="contained"
+              disabled={Boolean(pasted.errorLine) || pasted.cvs.length === 0}
+              onClick={() => {
+                registry.setMany(pasted.cvs);
+                closePaste();
+              }}
+            >
+              {t("cv.setFromTextApply")}
+            </Button>
+          </DialogActions>
+        </Dialog>
+        {filtering && visibleSections.length === 0 ? (
+          <Typography color="text.secondary">{t("cv.filterEmpty")}</Typography>
+        ) : null}
+        {visibleSections.map((section) => {
           if (section.kind === "cv") {
             return renderCv(section.item);
           }
           const containsOpen = section.items.some((item) => item.cv === openCv);
-          const open = openGroups.has(section.groupKey) || containsOpen;
+          const open = filtering || openGroups.has(section.groupKey) || containsOpen;
           const title = optionalT(section.groupKey) ?? "";
           return (
             <Paper

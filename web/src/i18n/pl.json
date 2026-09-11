@@ -99,7 +99,14 @@
     "readOnly": "Tylko odczyt",
     "bitOff": "0 — {{label}}",
     "bitOn": "1 — {{label}}",
-    "groupMeta": "{{count}} CV · {{ranges}}"
+    "groupMeta": "{{count}} CV · {{ranges}}",
+    "filter": "Filtr",
+    "filterHint": "Numer CV, wartość albo opis",
+    "filterEmpty": "Brak pasujących CV",
+    "setFromText": "Ustaw z tekstu",
+    "setFromTextTitle": "Ustaw CV z tekstu",
+    "setFromTextApply": "Wpisz do listy zmian",
+    "setFromTextParseError": "Nieprawidłowy wiersz: {{line}}"
   },
   "speed": {
     "heading": "Regulacja prędkości",

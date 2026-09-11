@@ -99,7 +99,14 @@
     "readOnly": "Nur lesen",
     "bitOff": "0 — {{label}}",
     "bitOn": "1 — {{label}}",
-    "groupMeta": "{{count}} CVs · {{ranges}}"
+    "groupMeta": "{{count}} CVs · {{ranges}}",
+    "filter": "Filter",
+    "filterHint": "CV-Nummer, Wert oder Beschreibung",
+    "filterEmpty": "Keine passenden CVs",
+    "setFromText": "Aus Text setzen",
+    "setFromTextTitle": "CVs aus Text setzen",
+    "setFromTextApply": "In die Änderungsliste übernehmen",
+    "setFromTextParseError": "Ungültige Zeile: {{line}}"
   },
   "speed": {
     "heading": "Geschwindigkeitsregelung",
