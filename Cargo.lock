@@ -516,7 +516,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1497,7 +1497,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1790,7 +1790,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2305,7 +2305,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2485,7 +2485,7 @@ checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
 [[package]]
 name = "wp-client"
 version = "0.2.0"
-source = "git+https://github.com/dcc-bigfred/wireless-programmer.git?branch=main#f43c81274c3819924cb24bd60aa5e49cb364a12f"
+source = "git+https://github.com/dcc-bigfred/wireless-programmer.git?branch=main#6a882fb4a604e6813ea25c833a330ddbc43ba0ab"
 dependencies = [
  "bigfred-shared-daemon",
  "serde",
@@ -2497,7 +2497,7 @@ dependencies = [
 [[package]]
 name = "wp-proto"
 version = "0.2.0"
-source = "git+https://github.com/dcc-bigfred/wireless-programmer.git?branch=main#f43c81274c3819924cb24bd60aa5e49cb364a12f"
+source = "git+https://github.com/dcc-bigfred/wireless-programmer.git?branch=main#6a882fb4a604e6813ea25c833a330ddbc43ba0ab"
 dependencies = [
  "bigfred-shared-daemon",
  "serde",
