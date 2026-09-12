@@ -1948,6 +1948,6 @@ const zimoMs450Cvs: CvItem[] = [
 
 export const zimoMs450: DecoderProfile = {
   id: "zimo-ms450",
-  features: ["cv", "speed", "address", "volume", "mapping"],
+  features: ["cv", "speed", "address", "volume", "mapping", "coupler"],
   cvs: [...zimoMs450Cvs].sort((a, b) => a.cv - b.cv),
 };

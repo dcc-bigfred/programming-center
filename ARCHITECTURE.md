@@ -77,7 +77,8 @@ Review filter — not a restatement of CODING-GUIDELINES.
   A new WS command is a new file + match arm. A new volume mapping is an
   entry in `web/src/features/volumeMap.ts`. Output mapping encode/decode
   is a frontend module (`zimoMapping.ts` / `esuMapping.ts`); other brands add their own
-  page behind `MappingPage`.
+  page behind `MappingPage`. Digital coupler is the same: `esuCoupler.ts` /
+  `zimoCoupler.ts` behind `CouplerPage`.
 - **Closed set, enum dispatch on the CV path.**
   `ProgrammingBus = DccBus | Z21`. `Hub::adapter(&live.programming_mode)` — not
   `Box<dyn>` on the hot path (guidelines §8.2). The SPA feeds one
@@ -87,9 +88,11 @@ Review filter — not a restatement of CODING-GUIDELINES.
   `volumeMap.ts`; Apply writes the mapped master CV. Mapping bits live in
   `zimoMapping.ts` / `esuMapping.ts`; Apply writes staged CVs through
   Zmiany. ZIMO uses the main table. ESU LokSound mapping registers a
-  page-scoped side table on `/mapping` so Apply can set CV 31/32 per
-  page; leaving `/mapping` with dirty mapping diffs asks to discard
-  that side only. DCC address is `address.set` (backend, ESU service-mode
+  page-scoped side table on `/mapping` (and `/coupler`, same
+  `esu-indexed` table) so Apply can set CV 31/32 per page; leaving those
+  paths with dirty indexed diffs asks to discard that side only.
+  Switching mapping ↔ coupler keeps the side table. DCC address is
+  `address.set` (backend, ESU service-mode
   sequence); the address form Apply does not go through CvRegistry.
 - **Adapter.** dcc-bus frames and Z21 UDP hide behind `ProgrammingBus`.
 - **Errors.** Envelope `{error, detail}`. Forward BigFred / Z21 codes.
@@ -148,6 +151,7 @@ programming-center/
 ├── README.md
 ├── docs/speed/                # ZIMO / ESU speed-curve notes (English)
 ├── docs/mapping/              # ZIMO / ESU output-mapping notes (English)
+├── docs/coupler.md            # ESU / ZIMO digital coupler
 ├── ARCHITECTURE.md            # this file
 ├── CODING-GUIDELINES.md
 ├── LICENSE                    # Apache-2.0
@@ -250,7 +254,8 @@ Unit tests: Vitest + Testing Library (`cd web && npm test`; `make test-web`).
 | `/speed` | same without `cv` | NMRA sliders, ZIMO drag charts, or LokSound v5 ESU charts; stages CVs. ZIMO and LokSound v5 `ensureRead` speed CVs on entry only when they are missing from the registry (prog/POM is transport, not a cache key). **Odczytaj** force-reads. |
 | `/address` | same without `cv` | DCC address. Read and Apply call the backend (`cv.read` / `address.set`) on the programming track; does not stage into CvRegistry. Read also fetches CV 28 (RailComPlus). Query `address` updates after a successful read or Apply. |
 | `/volume` | same without `cv` | Volume 0–100 stages the mapped master CV (`volumeMap` + `cv.read`) |
-| `/mapping` | same without `cv` | Output mapping. ZIMO MS/MN (`zimoMapping` + main `CvRegistry`). ESU LokSound v4/v5 (`esuMapping` + side table keyed `16.{cv32}.{cv}`, registered only while `/mapping` is mounted). Zmiany Apply writes main diffs first, then one `cv.write` per dirty page (`CV31`, `CV32`, payload). Mapping groups / output-config tab read on demand — no full 1440-CV dump on entry. Leaving `/mapping` with unsaved mapping diffs confirms and discards the side table only. |
+| `/mapping` | same without `cv` | Output mapping. ZIMO MS/MN (`zimoMapping` + main `CvRegistry`). ESU LokSound v4/v5 (`esuMapping` + side table keyed `16.{cv32}.{cv}`, registered while `/mapping` or `/coupler` is mounted). Zmiany Apply writes main diffs first, then one `cv.write` per dirty page (`CV31`, `CV32`, payload). Mapping groups / output-config tab read on demand — no full 1440-CV dump on entry. Leaving `/mapping` or `/coupler` with unsaved indexed diffs confirms and discards the side table only, except when switching mapping ↔ coupler. |
+| `/coupler` | same without `cv` | Digital coupler. ESU: output Mode Select + brightness on CV 32 = 0 (same `esu-indexed` side table), automatic uncoupling CV 246–248 on the main table, and F-key via mapping rows. ZIMO: FO effect 48 + packed CV 115/116 on the main table. |
 | `/backup` | `station`, `address`, `track` (no decoder required) | Dump / restore CVs; does not use CvRegistry |
 | `/telemetry` | `station`, `address` (no decoder required) | Live RailCom snapshot for the session locomotive. Z21 `programmingMode` only; LAN `0x88` fills address / speed / QoS. The page also shows other Table 13 cards (load, temperature, voltage, Info1, …) for a future non-Z21 source; those stay empty on Z21. Tanks are not shown. |
 
@@ -400,6 +405,10 @@ Output mapping: ZIMO MS/MN (`/mapping` → `ZimoMappingPage`,
 `web/src/features/zimoMapping.ts`, notes in `docs/mapping/zimo.md`)
 and ESU LokSound v4/v5 (`EsuMappingPage` + `esuMapping.ts`, notes in
 `docs/mapping/esu.md`). ESU indexed CVs are not listed in Direct CV.
+
+Digital coupler: `/coupler` → `CouplerPage`. ESU v4/v5 share
+`EsuCouplerPage` (`esuCoupler.ts`) and the mapping side table. ZIMO
+MS450 is `ZimoCouplerPage` + `zimoCoupler.ts`. Notes in `docs/coupler.md`.
 
 ---
 

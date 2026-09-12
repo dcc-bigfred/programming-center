@@ -47,8 +47,8 @@
   },
   "login": {
     "heading": "Programming Center",
-    "lead": "Zaloguj się kontem organizatora, aby programować dekodery na makiecie.",
-    "button": "Zaloguj jako organizator",
+    "lead": "Zaloguj się, aby programować dekodery na makiecie.",
+    "button": "Zaloguj się",
     "layout": "Makieta",
     "layoutHint": "Wybierz makietę, na której stoi lokomotywa.",
     "systemLayout": "Domyślna (warsztat)",
@@ -83,6 +83,8 @@
     "volumeHint": "Suwak 0–100, mapa na CV dekodera",
     "mapping": "Mapowanie wyjść",
     "mappingHint": "Który przycisk włącza który LED",
+    "coupler": "Sprzęg cyfrowy",
+    "couplerHint": "Typ sprzęgu i automatyczne odczepianie",
     "backup": "Kopia zapasowa",
     "backupHint": "Pobierz albo odtwórz CV dekodera"
   },
@@ -171,6 +173,64 @@
     "notReadYet": "Nie odczytano",
     "read": "Odczytaj",
     "save": "Zapisz"
+  },
+  "coupler": {
+    "heading": "Sprzęg cyfrowy",
+    "read": "Odczytaj",
+    "notReadYet": "Nie odczytano",
+    "confirmLeaveTitle": "Odrzucić zmiany sprzęgu?",
+    "confirmLeaveBody": "Niezapisane ustawienia wyjść sprzęgu (indeks ESU) zostaną odrzucone. Automatyczne odczepianie CV 246–248 i inne zwykłe CV zostaną.",
+    "esu": {
+      "waltzTitle": "Automatyczne odczepianie",
+      "waltzHint": "Po naciśnięciu F lok jedzie do tyłu na skład, potem odjeżdża. CV 246 = prędkość (0 = wyłączone). Czas = n × 0,016 s. Działa, gdy wyjście jest w trybie sprzęgu (albo impulsowym).",
+      "waltzOn": "Włączone",
+      "speed": "Prędkość (CV 246)",
+      "push": "Dociśnięcie (CV 248)",
+      "remove": "Odjazd (CV 247)",
+      "seconds": "{{value}} s",
+      "removeShorter": "Czas odjazdu powinien być dłuższy niż dociśnięcie, żeby lokomotywa stanęła w bezpiecznej odległości.",
+      "outputsTitle": "Wyjścia sprzęgu",
+      "outputsHint": "Typ na wyjściu nie jest klawiszem F — mówi dekoderowi, jak sterować tym przewodem, gdy funkcja jest włączona. Krois i Telex: PWM wysokiej częstotliwości (100% przez 250 ms, potem PWM 0–31). ROCO: tryb ROCO. Siła = PWM po 250 ms.",
+      "type": "Typ sprzęgu",
+      "typeNone": "Nie jest sprzęgiem",
+      "strength": "Siła (PWM)",
+      "functionKey": "Klawisz F",
+      "functionKeyNone": "Nie ustawiono",
+      "functionKeyComplex": "To wyjście jest w kilku wierszach mapowania ({{keys}}). Zmień na zakładce Mapowanie.",
+      "functionKeyOverwriteTitle": "Nadpisać klawisz F?",
+      "functionKeyOverwrite": "Wiersz miał {{keys}} — zostanie ustawiony na F{{next}}.",
+      "functionKeyNoEmpty": "Brak pustego wiersza mapowania.",
+      "servoHint": "Sprzęg serwo na LokSound XL: AUX7–AUX10.",
+      "servoAuxHint": "Sprzęg serwo w instrukcji v4 jest tylko na XL (AUX7–AUX10)."
+    },
+    "zimo": {
+      "outputsTitle": "Wyjścia sprzęgu",
+      "direction": "Kierunek",
+      "dirBoth": "Oba kierunki",
+      "out": {
+        "front": "Światła przód",
+        "rear": "Światła tył",
+        "fo1": "FO1",
+        "fo2": "FO2",
+        "fo3": "FO3",
+        "fo4": "FO4",
+        "fo5": "FO5",
+        "fo6": "FO6",
+        "fo7": "FO7",
+        "fo8": "FO8"
+      },
+      "coilTitle": "Cewka (CV 115)",
+      "coilHint": "CV115=AB. A — czas pełnego napięcia. B — czas obniżonego napięcia 0–90% (ROCO; Krois = 0). Presety Krois: 2 / 3 / 4 s bez obniżonego napięcia.",
+      "kroisPreset": "Krois {{sec}} s",
+      "pullIn": "Czas przyciągania",
+      "hold": "Czas obniżonego napięcia (ROCO)",
+      "seconds": "{{value}} s",
+      "waltzTitle": "Automatyczne odjechanie (CV 116)",
+      "waltzHint": "CV116=ABC. A — najpierw dociśnij (1 = tak). B — czas odjazdu (0 = lok się nie rusza). C — jak szybko odjeżdża (× 4).",
+      "unload": "Najpierw dociśnij (odciążenie sprzęgu)",
+      "disengage": "Czas odjazdu",
+      "speed": "Stopień prędkości"
+    }
   },
   "mapping": {
     "heading": "Mapowanie wyjść",
@@ -655,8 +715,8 @@
         "b6": { "off": "FO5 przyciemniane", "on": "FO5 bez przyciemniania" },
         "b7": { "off": "FO6 przyciemniane", "on": "FO6 bez przyciemniania" }
       },
-      "cv115": { "description": "Sprzęg / drugie przyciemnianie", "hint": "Efekt 48: dziesiątki = czas przyciągania. Przyciemnianie: dziesiątki = 0, jedności = PWM 0–90%" },
-      "cv116": { "description": "Automatyczne odjechanie przy rozłączaniu", "hint": "Dziesiątki = czas (jak CV 115). Jedności × 4 = stopień. Setki 1 = odciążenie sprzęgu" },
+      "cv115": { "description": "Sprzęg / drugie przyciemnianie", "hint": "CV115=AB. A — czas pełnego napięcia (0 = przyciemnianie). B — czas obniżonego napięcia 0–90% (Krois = 0)" },
+      "cv116": { "description": "Automatyczne odjechanie przy rozłączaniu", "hint": "CV116=ABC. A — najpierw dociśnij (1 = tak). B — czas odjazdu (0 = lok się nie rusza). C — jak szybko odjeżdża (× 4)" },
       "cv117": { "description": "Wypełnienie błysku", "hint": "Dziesiątki = off, jedności = on (0 = 100 ms … 9 = 1 s). 55 = 1 s równo" },
       "cv118": {
         "description": "Maska błysku",
@@ -1180,7 +1240,10 @@
     },
     "loksoundV4": {
       "cv63": { "description": "Głośność główna", "hint": "0–64, 0 = wyciszenie" },
-      "cv49": { "description": "Tryb rozszerzony" }
+      "cv49": { "description": "Tryb rozszerzony" },
+      "cv246": { "description": "Prędkość automatycznego rozłączania", "hint": "0 = funkcja wyłączona. Tylko gdy wyjście jest w trybie sprzęgu" },
+      "cv247": { "description": "Czas odjazdu przy rozłączaniu", "hint": "× 0,016 s. Powinien być dłuższy niż CV 248" },
+      "cv248": { "description": "Czas dociśnięcia przy rozłączaniu", "hint": "× 0,016 s" }
     },
     "rb23xx": {
       "cv1": { "description": "Adres krótki", "hint": "Przykład: 3" },

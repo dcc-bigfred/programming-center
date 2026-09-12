@@ -78,6 +78,7 @@ Speed control: [ZIMO MS/MN](docs/speed/zimo.md),
 [ESU LokSound 5](docs/speed/esu.md).
 Output mapping: [ZIMO MS/MN](docs/mapping/zimo.md),
 [ESU LokSound v4 / v5](docs/mapping/esu.md).
+Digital coupler: [ESU and ZIMO](docs/coupler.md).
 
 [ARCHITECTURE.md](ARCHITECTURE.md). Rust / TypeScript rules:
 [CODING-GUIDELINES.md](CODING-GUIDELINES.md). License: Apache-2.0.

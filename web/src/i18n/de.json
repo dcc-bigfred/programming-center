@@ -47,8 +47,8 @@
   },
   "login": {
     "heading": "Programming Center",
-    "lead": "Melde dich mit einem Organisator-Konto an, um Decoder auf der Anlage zu programmieren.",
-    "button": "Als Organisator anmelden",
+    "lead": "Melde dich an, um Decoder auf der Anlage zu programmieren.",
+    "button": "Anmelden",
     "layout": "Anlage",
     "layoutHint": "Wähle die Anlage, auf der die Lok steht.",
     "systemLayout": "Standard (Werkstatt)",
@@ -83,6 +83,8 @@
     "volumeHint": "Regler 0–100, abgebildet auf die Master-CV des Decoders",
     "mapping": "Ausgangszuordnung",
     "mappingHint": "Welche Taste schaltet welchen Anschluss",
+    "coupler": "Digitale Kupplung",
+    "couplerHint": "Kupplungstyp und automatisches Entkuppeln",
     "backup": "Datensicherung",
     "backupHint": "Decoder-CVs herunterladen oder wiederherstellen"
   },
@@ -171,6 +173,64 @@
     "notReadYet": "Noch nicht gelesen",
     "read": "Lesen",
     "save": "Speichern"
+  },
+  "coupler": {
+    "heading": "Digitale Kupplung",
+    "read": "Lesen",
+    "notReadYet": "Noch nicht gelesen",
+    "confirmLeaveTitle": "Kupplungsänderungen verwerfen?",
+    "confirmLeaveBody": "Ungespeicherte Kupplungsausgänge (ESU-Index-CVs) gehen verloren. Automatisches Entkuppeln CV 246–248 und andere nummerierte CVs bleiben.",
+    "esu": {
+      "waltzTitle": "Automatisches Entkuppeln",
+      "waltzHint": "Nach F fährt die Lok rückwärts gegen den Zug und danach weg. CV 246 = Geschwindigkeit (0 = aus). Zeit = n × 0,016 s. Aktiv, wenn der Ausgang im Kupplungsmodus (oder Impuls) ist.",
+      "waltzOn": "Aktiv",
+      "speed": "Geschwindigkeit (CV 246)",
+      "push": "Andrücken (CV 248)",
+      "remove": "Wegfahren (CV 247)",
+      "seconds": "{{value}} s",
+      "removeShorter": "Die Wegfahrzeit sollte länger sein als das Andrücken, damit die Lok in sicherem Abstand hält.",
+      "outputsTitle": "Kupplungsausgänge",
+      "outputsHint": "Der Typ am Ausgang ist nicht die F-Taste — er sagt dem Decoder, wie er diese Leitung ansteuert, wenn die Funktion ein ist. Krois und Telex: PWM hoher Frequenz (100% für 250 ms, dann PWM 0–31). ROCO: ROCO-Modus. Stärke = PWM nach 250 ms.",
+      "type": "Kupplungstyp",
+      "typeNone": "Keine Kupplung",
+      "strength": "Stärke (PWM)",
+      "functionKey": "Funktionstaste",
+      "functionKeyNone": "Nicht zugeordnet",
+      "functionKeyComplex": "Dieser Ausgang steht in mehreren Mapping-Zeilen ({{keys}}). Ändere ihn unter Mapping.",
+      "functionKeyOverwriteTitle": "F-Taste überschreiben?",
+      "functionKeyOverwrite": "Die Zeile hatte {{keys}} — sie wird auf F{{next}} gesetzt.",
+      "functionKeyNoEmpty": "Keine leere Mapping-Zeile.",
+      "servoHint": "Servo-Kupplung am LokSound XL: AUX7–AUX10.",
+      "servoAuxHint": "Die v4-Anleitung beschreibt die Servo-Kupplung nur am XL (AUX7–AUX10)."
+    },
+    "zimo": {
+      "outputsTitle": "Kupplungsausgänge",
+      "direction": "Richtung",
+      "dirBoth": "Beide Richtungen",
+      "out": {
+        "front": "Frontlicht",
+        "rear": "Rücklicht",
+        "fo1": "FO1",
+        "fo2": "FO2",
+        "fo3": "FO3",
+        "fo4": "FO4",
+        "fo5": "FO5",
+        "fo6": "FO6",
+        "fo7": "FO7",
+        "fo8": "FO8"
+      },
+      "coilTitle": "Spule (CV 115)",
+      "coilHint": "CV115=AB. A — Zeit bei voller Spannung. B — Zeit der reduzierten Spannung 0–90% (ROCO; Krois = 0). Krois-Presets: 2 / 3 / 4 s ohne reduzierte Spannung.",
+      "kroisPreset": "Krois {{sec}} s",
+      "pullIn": "Anzugszeit",
+      "hold": "Zeit der reduzierten Spannung (ROCO)",
+      "seconds": "{{value}} s",
+      "waltzTitle": "Automatisches Wegfahren (CV 116)",
+      "waltzHint": "CV116=ABC. A — zuerst andrücken (1 = ja). B — Wegfahrzeit (0 = Lok bleibt stehen). C — wie schnell sie wegfährt (× 4).",
+      "unload": "Zuerst andrücken (Kupplung entlasten)",
+      "disengage": "Wegfahrzeit",
+      "speed": "Fahrstufe"
+    }
   },
   "mapping": {
     "heading": "Ausgangszuordnung",
@@ -655,8 +715,8 @@
         "b6": { "off": "FO5 gedimmt", "on": "FO5 nicht gedimmt" },
         "b7": { "off": "FO6 gedimmt", "on": "FO6 nicht gedimmt" }
       },
-      "cv115": { "description": "Entkuppler / zweites Dimmen", "hint": "Effekt 48: Zehner = Anzugszeit. Dimmen: Zehner = 0, Einer = PWM 0–90%" },
-      "cv116": { "description": "Automatisches Wegfahren beim Entkuppeln", "hint": "Zehner = Zeit (wie CV 115). Einer × 4 = Stufe. Hunderter 1 = Entlasten" },
+      "cv115": { "description": "Entkuppler / zweites Dimmen", "hint": "CV115=AB. A — Zeit bei voller Spannung (0 = Dimmen). B — Zeit der reduzierten Spannung 0–90% (Krois = 0)" },
+      "cv116": { "description": "Automatisches Wegfahren beim Entkuppeln", "hint": "CV116=ABC. A — zuerst andrücken (1 = ja). B — Wegfahrzeit (0 = Lok bleibt stehen). C — wie schnell sie wegfährt (× 4)" },
       "cv117": { "description": "Blink-Tastverhältnis", "hint": "Zehner = aus, Einer = ein (0 = 100 ms … 9 = 1 s). 55 = 1 s gleich" },
       "cv118": {
         "description": "Blink-Maske",
@@ -1180,7 +1240,10 @@
     },
     "loksoundV4": {
       "cv63": { "description": "Gesamtlautstärke", "hint": "0–64, 0 = stumm" },
-      "cv49": { "description": "Erweiterte Konfiguration" }
+      "cv49": { "description": "Erweiterte Konfiguration" },
+      "cv246": { "description": "Automatische Entkupplungsgeschwindigkeit", "hint": "0 = Funktion aus. Ausgang muss im Kupplungsmodus sein" },
+      "cv247": { "description": "Entkupplung-Wegfahrzeit", "hint": "× 0,016 s. Sollte länger sein als CV 248" },
+      "cv248": { "description": "Entkupplung-Andrückzeit", "hint": "× 0,016 s" }
     },
     "rb23xx": {
       "cv1": { "description": "Kurzadresse", "hint": "Beispiel: 3" },

@@ -689,7 +689,7 @@ const loksoundV5Cvs: CvItem[] = [
 
 export const loksoundV5: DecoderProfile = {
   id: "loksound-v5",
-  features: ["cv", "speed", "address", "volume", "mapping"],
+  features: ["cv", "speed", "address", "volume", "mapping", "coupler"],
   cvs: [...loksoundV5Cvs].sort((a, b) => a.cv - b.cv),
   writePriority: [
     [29],
@@ -699,7 +699,7 @@ export const loksoundV5: DecoderProfile = {
 
 export const loksoundV4: DecoderProfile = {
   id: "loksound-v4",
-  features: ["cv", "speed", "address", "volume", "mapping"],
+  features: ["cv", "speed", "address", "volume", "mapping", "coupler"],
   cvs: [
     ...nmraBasic,
     {
@@ -715,6 +715,30 @@ export const loksoundV4: DecoderProfile = {
       descriptionKey: "catalog.loksoundV4.cv49.description",
       min: 0,
       max: 255,
+    },
+    {
+      cv: 246,
+      descriptionKey: "catalog.loksoundV4.cv246.description",
+      hintKey: "catalog.loksoundV4.cv246.hint",
+      min: 0,
+      max: 255,
+      default: 0,
+    },
+    {
+      cv: 247,
+      descriptionKey: "catalog.loksoundV4.cv247.description",
+      hintKey: "catalog.loksoundV4.cv247.hint",
+      min: 0,
+      max: 255,
+      default: 0,
+    },
+    {
+      cv: 248,
+      descriptionKey: "catalog.loksoundV4.cv248.description",
+      hintKey: "catalog.loksoundV4.cv248.hint",
+      min: 0,
+      max: 255,
+      default: 0,
     },
   ],
 };

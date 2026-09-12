@@ -24,6 +24,13 @@ describe("decoder catalogue", () => {
     expect(getDecoder("zimo-ms450")?.features).toContain("mapping");
     expect(getDecoder("loksound-v5")?.features).toContain("mapping");
     expect(getDecoder("loksound-v4")?.features).toContain("mapping");
+    expect(getDecoder("zimo-ms450")?.features).toContain("coupler");
+    expect(getDecoder("loksound-v5")?.features).toContain("coupler");
+    expect(getDecoder("loksound-v4")?.features).toContain("coupler");
+    expect(getDecoder("loksound-v4")?.cvs.some((c) => c.cv === 246)).toBe(true);
+    expect(getDecoder("loksound-v4")?.cvs.some((c) => c.cv === 247)).toBe(true);
+    expect(getDecoder("loksound-v4")?.cvs.some((c) => c.cv === 248)).toBe(true);
+    expect(getDecoder("nmra")?.features).not.toContain("coupler");
     expect(getDecoder("loksound-v5")?.longAddressBit ?? 5).toBe(5);
     expect(getDecoder("rb23xx")?.longAddressBit).toBe(3);
   });

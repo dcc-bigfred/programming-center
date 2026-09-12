@@ -48,7 +48,7 @@ interface CvRegistryValue {
   ensureRead: (cvs: number[], signal?: AbortSignal) => Promise<void>;
   /** Zmiany → Odrzuć: main and every active side. */
   discard: () => void;
-  /** Leave a page-scoped table (e.g. /mapping). Main diffs stay. */
+  /** Leave a page-scoped table (e.g. /mapping, /coupler). Main diffs stay. */
   discardSide: (id: string) => void;
   sideHasPending: (id: string) => boolean;
   registerSideTable: (def: AnySideTable) => void;
@@ -110,7 +110,7 @@ export function CvRegistryProvider({ children }: { children: ReactNode }) {
     mainCvStore.ensureScope(scope);
     // Scope is per locomotive. Changing decoder/station/address reloads every
     // *registered* side too so mapping diffs from loco A never mix with loco B.
-    // Leaving /mapping does not run this — it only unregisters, and cache stays.
+    // Leaving /mapping or /coupler does not run this — it only unregisters, and cache stays.
     for (const side of sidesRef.current.values()) {
       side.store.ensureScope(scope);
     }
@@ -214,8 +214,8 @@ export function CvRegistryProvider({ children }: { children: ReactNode }) {
 
   const registerSideTable = useCallback(
     (def: AnySideTable) => {
-      // Page-scoped: ESU mapping registers while /mapping is mounted. Diffs and
-      // Apply only see sides in this map, so /cv never writes CV 31/32 windows.
+      // Page-scoped: ESU mapping/coupler register while those screens are mounted.
+      // Diffs and Apply only see sides in this map, so /cv never writes CV 31/32 windows.
       const existing = sidesRef.current.get(def.id);
       if (existing === def) return;
       sidesRef.current.set(def.id, def);

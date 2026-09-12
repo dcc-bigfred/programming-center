@@ -47,8 +47,8 @@
   },
   "login": {
     "heading": "Programming Center",
-    "lead": "Sign in with an organizer account to program decoders on the layout.",
-    "button": "Sign in as organizer",
+    "lead": "Sign in to program decoders on the layout.",
+    "button": "Sign in",
     "layout": "Layout",
     "layoutHint": "Choose the layout the locomotive is on.",
     "systemLayout": "Default (workshop)",
@@ -83,6 +83,8 @@
     "volumeHint": "0–100 slider mapped onto the decoder’s master CV",
     "mapping": "Output mapping",
     "mappingHint": "Which key turns on which wire",
+    "coupler": "Digital coupler",
+    "couplerHint": "Coupler type and automatic uncoupling",
     "backup": "Backup",
     "backupHint": "Download or restore decoder CVs"
   },
@@ -171,6 +173,64 @@
     "notReadYet": "Not read yet",
     "read": "Read",
     "save": "Save"
+  },
+  "coupler": {
+    "heading": "Digital coupler",
+    "read": "Read",
+    "notReadYet": "Not read yet",
+    "confirmLeaveTitle": "Discard coupler changes?",
+    "confirmLeaveBody": "Unsaved coupler output settings (ESU indexed CVs) will be thrown away. Automatic uncoupling CVs 246–248 and other numbered CVs stay.",
+    "esu": {
+      "waltzTitle": "Automatic uncoupling",
+      "waltzHint": "Press F and the loco drives backwards into the train, then pulls away. CV 246 = speed (0 = off). Time = n × 0.016 s. Active when the output is in coupler (or pulse) mode.",
+      "waltzOn": "Enabled",
+      "speed": "Speed (CV 246)",
+      "push": "Push (CV 248)",
+      "remove": "Pull away (CV 247)",
+      "seconds": "{{value}} s",
+      "removeShorter": "Pull-away time should be longer than the push so the loco stops at a safe distance.",
+      "outputsTitle": "Coupler outputs",
+      "outputsHint": "The type on an output is not the F key — it tells the decoder how to drive that wire when the function is on. Krois and Telex: high-frequency PWM (100% for 250 ms, then PWM 0–31). ROCO: ROCO mode. Strength = PWM after 250 ms.",
+      "type": "Coupler type",
+      "typeNone": "Not a coupler",
+      "strength": "Strength (PWM)",
+      "functionKey": "Function key",
+      "functionKeyNone": "Not assigned",
+      "functionKeyComplex": "This output is in several mapping rows ({{keys}}). Change it on the Mapping tab.",
+      "functionKeyOverwriteTitle": "Overwrite the F key?",
+      "functionKeyOverwrite": "The row had {{keys}} — it will be set to F{{next}}.",
+      "functionKeyNoEmpty": "No empty mapping row.",
+      "servoHint": "Servo coupler on LokSound XL: AUX7–AUX10.",
+      "servoAuxHint": "The v4 manual documents servo coupler only on XL (AUX7–AUX10)."
+    },
+    "zimo": {
+      "outputsTitle": "Coupler outputs",
+      "direction": "Direction",
+      "dirBoth": "Both directions",
+      "out": {
+        "front": "Front light",
+        "rear": "Rear light",
+        "fo1": "FO1",
+        "fo2": "FO2",
+        "fo3": "FO3",
+        "fo4": "FO4",
+        "fo5": "FO5",
+        "fo6": "FO6",
+        "fo7": "FO7",
+        "fo8": "FO8"
+      },
+      "coilTitle": "Coil (CV 115)",
+      "coilHint": "CV115=AB. A — full-voltage time. B — reduced-voltage time 0–90% (ROCO; Krois = 0). Krois presets: 2 / 3 / 4 s with no reduced voltage.",
+      "kroisPreset": "Krois {{sec}} s",
+      "pullIn": "Pull-in time",
+      "hold": "Reduced-voltage time (ROCO)",
+      "seconds": "{{value}} s",
+      "waltzTitle": "Automatic pull-away (CV 116)",
+      "waltzHint": "CV116=ABC. A — push in first (1 = yes). B — pull-away time (0 = loco stays put). C — how fast it pulls away (× 4).",
+      "unload": "Push in first (unload the coupler)",
+      "disengage": "Pull-away time",
+      "speed": "Speed step"
+    }
   },
   "mapping": {
     "heading": "Output mapping",
@@ -655,8 +715,8 @@
         "b6": { "off": "FO5 dimmed", "on": "FO5 not dimmed" },
         "b7": { "off": "FO6 dimmed", "on": "FO6 not dimmed" }
       },
-      "cv115": { "description": "Uncoupler / second dimming", "hint": "Effect 48: tens = pull-in time. Dimming: tens = 0, ones = PWM 0–90%" },
-      "cv116": { "description": "Automatic uncoupling pull-away", "hint": "Tens = time (as CV 115). Ones × 4 = step. Hundreds 1 = coupler unload" },
+      "cv115": { "description": "Uncoupler / second dimming", "hint": "CV115=AB. A — full-voltage time (0 = dimming). B — reduced-voltage time 0–90% (Krois = 0)" },
+      "cv116": { "description": "Automatic uncoupling pull-away", "hint": "CV116=ABC. A — push in first (1 = yes). B — pull-away time (0 = loco stays put). C — how fast it pulls away (× 4)" },
       "cv117": { "description": "Flasher duty cycle", "hint": "Tens = off, ones = on (0 = 100 ms … 9 = 1 s). 55 = 1 s equal" },
       "cv118": {
         "description": "Flasher mask",
@@ -1180,7 +1240,10 @@
     },
     "loksoundV4": {
       "cv63": { "description": "Master volume", "hint": "0–64, 0 = mute" },
-      "cv49": { "description": "Extended configuration" }
+      "cv49": { "description": "Extended configuration" },
+      "cv246": { "description": "Auto uncoupling speed", "hint": "0 = function off. Output must be in coupler mode" },
+      "cv247": { "description": "Uncoupling pull-away time", "hint": "× 0.016 s. Should be longer than CV 248" },
+      "cv248": { "description": "Uncoupling push time", "hint": "× 0.016 s" }
     },
     "rb23xx": {
       "cv1": { "description": "Short address", "hint": "Example: 3" },

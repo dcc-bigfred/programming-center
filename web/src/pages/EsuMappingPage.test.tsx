@@ -98,6 +98,7 @@ function renderMapping(withHeader = false) {
             element: (
               <>
                 <Link to="/cv?decoder=loksound-v5&address=5&track=prog">to-cv</Link>
+                <Link to="/coupler?decoder=loksound-v5&address=5&track=prog">to-coupler</Link>
                 <EsuMappingPage
                   decoder={decoder}
                   profile={loksoundV5Mapping}
@@ -107,6 +108,7 @@ function renderMapping(withHeader = false) {
             ),
           },
           { path: "/cv", element: <div data-testid="cv-page">cv-page</div> },
+          { path: "/coupler", element: <div data-testid="coupler-page">coupler-page</div> },
         ],
       },
     ],
@@ -181,6 +183,18 @@ describe("EsuMappingPage leave", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Output setup" }));
     expect(screen.queryByText("Discard mapping changes?")).not.toBeInTheDocument();
     expect(indexedCvDiffs()).toHaveLength(1);
+  });
+
+  it("keeps dirty indexed diffs when going to the coupler page", async () => {
+    renderMapping();
+    act(() => {
+      setIndexedCv(indexedKey(3, 257), 4);
+    });
+    fireEvent.click(screen.getByText("to-coupler"));
+    expect(await screen.findByTestId("coupler-page")).toBeInTheDocument();
+    expect(screen.queryByText("Discard mapping changes?")).not.toBeInTheDocument();
+    expect(indexedCvDiffs()).toHaveLength(1);
+    expect(getIndexedCv(indexedKey(3, 257))).toBe(4);
   });
 
   it("header address change uses the existing discard confirm for main and side", async () => {

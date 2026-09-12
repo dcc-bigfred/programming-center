@@ -327,6 +327,11 @@ export function esuMappingProfile(decoderId: string): EsuMappingProfile | undefi
   return undefined;
 }
 
+/** Mapping and coupler share ESU_SIDE_TABLE; leave-confirm only when leaving both. */
+export function keepsEsuSideTable(pathname: string): boolean {
+  return pathname === "/mapping" || pathname === "/coupler";
+}
+
 export function indexedKey(cv32: number, cv: number): string {
   return `${INDEX_CV31_VALUE}.${cv32}.${cv}`;
 }
@@ -720,9 +725,58 @@ export function applyBatches(diffs: IndexedEntry[]): ApplyBatch[] {
     }));
 }
 
+export type IndexedGet = (cv32: number, cv: number) => number | undefined;
+
+export type IndexPage = { cv32: number; cvs: number[] };
+
+export function mergeIndexPages(pages: IndexPage[]): IndexPage[] {
+  const byPage = new Map<number, Set<number>>();
+  for (const page of pages) {
+    const set = byPage.get(page.cv32) ?? new Set<number>();
+    for (const cv of page.cvs) set.add(cv);
+    byPage.set(page.cv32, set);
+  }
+  return [...byPage.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([cv32, cvs]) => ({ cv32, cvs: [...cvs].sort((a, b) => a - b) }));
+}
+
+export function pagesForRows(profile: EsuMappingProfile, rows: number[]): IndexPage[] {
+  return mergeIndexPages(
+    rows.flatMap((row) => {
+      const layout = rowLayout(profile, row);
+      return [
+        { cv32: layout.conditionPage, cvs: layout.conditionCvs },
+        { cv32: layout.outputPage, cvs: layout.outputCvs },
+      ];
+    }),
+  );
+}
+
+/** Physical-output CVs only — enough to see which AUX a row drives. */
+export function physicalScanPages(profile: EsuMappingProfile): IndexPage[] {
+  const byPage = new Map<number, Set<number>>();
+  for (let row = 1; row <= profile.rowCount; row++) {
+    const layout = rowLayout(profile, row);
+    const phys = layout.outputCvs.slice(0, profile.physicalCvCount);
+    const set = byPage.get(layout.outputPage) ?? new Set<number>();
+    for (const cv of phys) set.add(cv);
+    byPage.set(layout.outputPage, set);
+  }
+  return [...byPage.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([cv32, cvs]) => ({ cv32, cvs: [...cvs].sort((a, b) => a - b) }));
+}
+
+export function unreadPages(pages: IndexPage[], get: IndexedGet): IndexPage[] {
+  return pages
+    .map((page) => ({ cv32: page.cv32, cvs: page.cvs.filter((cv) => get(page.cv32, cv) === undefined) }))
+    .filter((page) => page.cvs.length > 0);
+}
+
 export function pagesLoaded(
-  pages: { cv32: number; cvs: number[] }[],
-  get: (cv32: number, cv: number) => number | undefined,
+  pages: IndexPage[],
+  get: IndexedGet,
 ): boolean {
   return pages.every((page) => page.cvs.every((cv) => get(page.cv32, cv) !== undefined));
 }

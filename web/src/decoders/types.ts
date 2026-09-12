@@ -33,7 +33,14 @@ export function grouped(groupKey: string, items: CvItem[]): CvItem[] {
   return items.map((item) => ({ ...item, groupKey }));
 }
 
-export type FeatureId = "cv" | "speed" | "address" | "volume" | "mapping" | "backup";
+export type FeatureId =
+  | "cv"
+  | "speed"
+  | "address"
+  | "volume"
+  | "mapping"
+  | "coupler"
+  | "backup";
 
 /** CV numbers or inclusive [from, to] ranges in one write-priority tier. */
 export type CvWriteTier = (number | [number, number])[];

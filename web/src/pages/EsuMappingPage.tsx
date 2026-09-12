@@ -53,6 +53,7 @@ import {
   emptyRow,
   indexedKey,
   isRowEmpty,
+  keepsEsuSideTable,
   pagesLoaded,
   outputConfigPage,
   readRow,
@@ -137,7 +138,9 @@ export default function EsuMappingPage({
 
   const blocker = useBlocker(
     ({ currentLocation, nextLocation }) =>
-      sideDirty && currentLocation.pathname !== nextLocation.pathname,
+      sideDirty &&
+      currentLocation.pathname !== nextLocation.pathname &&
+      !keepsEsuSideTable(nextLocation.pathname),
   );
 
   useEffect(() => {

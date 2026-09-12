@@ -19,8 +19,10 @@ describe("feature modules", () => {
     expect(ids).toContain("backup");
     expect(ids).toContain("volume");
     expect(ids).toContain("mapping");
+    expect(ids).toContain("coupler");
     expect(isFeatureEnabled(listFeatures().find((f) => f.id === "volume")!, nmra)).toBe(false);
     expect(isFeatureEnabled(listFeatures().find((f) => f.id === "mapping")!, nmra)).toBe(false);
+    expect(isFeatureEnabled(listFeatures().find((f) => f.id === "coupler")!, nmra)).toBe(false);
     expect(isFeatureEnabled(listFeatures().find((f) => f.id === "speed")!, nmra)).toBe(true);
     expect(
       isFeatureEnabled(listFeatures().find((f) => f.id === "volume")!, getDecoder("zimo-ms450")),
@@ -34,5 +36,17 @@ describe("feature modules", () => {
     expect(
       isFeatureEnabled(listFeatures().find((f) => f.id === "mapping")!, getDecoder("loksound-v4")),
     ).toBe(true);
+    expect(
+      isFeatureEnabled(listFeatures().find((f) => f.id === "coupler")!, getDecoder("zimo-ms450")),
+    ).toBe(true);
+    expect(
+      isFeatureEnabled(listFeatures().find((f) => f.id === "coupler")!, getDecoder("loksound-v5")),
+    ).toBe(true);
+    expect(
+      isFeatureEnabled(listFeatures().find((f) => f.id === "coupler")!, getDecoder("loksound-v4")),
+    ).toBe(true);
+    expect(
+      isFeatureEnabled(listFeatures().find((f) => f.id === "coupler")!, getDecoder("rb23xx")),
+    ).toBe(false);
   });
 });

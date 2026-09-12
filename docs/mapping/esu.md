@@ -19,8 +19,10 @@ one `cv.write` per dirty page: `CV31=16`, `CV32=page`, then the payload.
 
 The side table is **page-scoped**. Leaving `/mapping` unregisters it, so
 Direct CV and a later Apply from `/cv` never write mapping windows.
-Unsaved mapping diffs require confirmation; OK discards only the side
-table (speed / volume / CV-list edits stay). A clean leave does not
+**Coupler** (`/coupler`) registers the same `esu-indexed` table for
+output-config CVs (CV 32 = 0). Switching mapping ↔ coupler does not
+discard; leaving both with dirty diffs asks to discard the side only
+(speed / volume / CV-list / waltz 246–248 stay). A clean leave does not
 prompt; the read cache stays so coming back does not dump those pages
 again. Changelists and backup stay main-only — mapping edits are applied
 live, not saved as JSON.
