@@ -8,10 +8,12 @@ mod changelists;
 mod config;
 mod db;
 mod error;
+mod firmware;
 mod http;
 mod models;
 mod schema;
 mod telemetry;
+mod wp;
 mod ws;
 
 use std::net::SocketAddr;
@@ -64,6 +66,8 @@ pub struct AppState {
     pub http: reqwest::Client,
     pub hub: Hub,
     pub db: Db,
+    pub wp: Arc<crate::wp::WpLink>,
+    pub data_dir: DataDir,
 }
 
 impl AppState {
@@ -127,12 +131,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None => err.code,
     })?;
     tracing::info!(path = %db_path.display(), "sqlite ready");
+    let wp = crate::wp::WpLink::spawn(Arc::clone(&cfg));
     let state = AppState {
         cfg: Arc::clone(&cfg),
         bf_cfg: Arc::clone(&bf_cfg),
         http,
         hub: hub.clone(),
         db,
+        wp,
+        data_dir: data_dir.clone(),
     };
 
     let watch_stop = spawn_config_reloader(

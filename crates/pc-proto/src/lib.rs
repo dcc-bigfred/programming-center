@@ -36,6 +36,9 @@ pub struct Ack {
     pub cvs: Option<Vec<CvEntry>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub errors: Option<Vec<u16>>,
+    /// Structured success payload (`firmware.list` / `scan` / `status` / `update`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub result: Option<serde_json::Value>,
 }
 
 /// Structured `address_reverted` detail. The frontend localises from this
@@ -72,6 +75,7 @@ impl Ack {
             } else {
                 Some(errors)
             },
+            result: None,
         }
     }
 
@@ -84,6 +88,20 @@ impl Ack {
             reverted: None,
             cvs: None,
             errors: None,
+            result: None,
+        }
+    }
+
+    #[must_use]
+    pub fn ok_result(result: serde_json::Value) -> Self {
+        Self {
+            ok: true,
+            error: None,
+            detail: None,
+            reverted: None,
+            cvs: None,
+            errors: None,
+            result: Some(result),
         }
     }
 
@@ -96,6 +114,7 @@ impl Ack {
             reverted: None,
             cvs: None,
             errors: None,
+            result: None,
         }
     }
 
@@ -109,6 +128,7 @@ impl Ack {
             reverted: None,
             cvs: Some(cvs),
             errors: None,
+            result: None,
         }
     }
 
@@ -122,6 +142,7 @@ impl Ack {
             reverted: Some(reverted),
             cvs: Some(cvs),
             errors: None,
+            result: None,
         }
     }
 }
@@ -192,6 +213,68 @@ pub struct AddressSetPayload {
     /// `None` = leave CV 28 alone. `Some(v)` writes CV 28 bit 7 (RailComPlus).
     #[serde(default)]
     pub railcom_plus: Option<bool>,
+}
+
+/// `function.set` — locomotive function on the ops track (not a pulse).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FunctionSetPayload {
+    #[serde(default)]
+    pub station_id: Option<u64>,
+    pub address: u16,
+    pub function: u8,
+    pub on: bool,
+}
+
+/// `firmware.update` — basename of a `.bin` plus scan candidate key (BSSID).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FirmwareUpdatePayload {
+    pub key: String,
+    pub file: String,
+}
+
+/// `firmware.watch` / `firmware.cancel`.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FirmwareJobPayload {
+    #[serde(default)]
+    pub job_id: String,
+}
+
+/// One `*.bin` in `$DATA_DIR/var/railbox/rb23xx/firmware`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct FirmwareFile {
+    pub name: String,
+    pub size: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mtime: Option<i64>,
+}
+
+/// Soft-AP candidate from wireless-programmer `scan` (RB23xx only).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct FirmwareCandidate {
+    pub key: String,
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rssi: Option<i32>,
+    pub driver: String,
+}
+
+/// `firmware.progress` — proxy of wireless-programmer `job.watch`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct FirmwareProgress {
+    pub job_id: String,
+    pub state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub step: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub progress: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
 }
 
 /// `telemetry.subscribe` — watch RailCom DYN for one locomotive (Z21 LAN).
@@ -320,8 +403,21 @@ pub const TYPE_ADDRESS_SET: &str = "address.set";
 pub const TYPE_TELEMETRY_SUBSCRIBE: &str = "telemetry.subscribe";
 pub const TYPE_TELEMETRY_CANCEL: &str = "telemetry.cancel";
 pub const TYPE_TELEMETRY_UPDATE: &str = "telemetry.update";
+pub const TYPE_FUNCTION_SET: &str = "function.set";
+pub const TYPE_FIRMWARE_STATUS: &str = "firmware.status";
+pub const TYPE_FIRMWARE_LIST: &str = "firmware.list";
+pub const TYPE_FIRMWARE_SCAN: &str = "firmware.scan";
+pub const TYPE_FIRMWARE_UPDATE: &str = "firmware.update";
+pub const TYPE_FIRMWARE_WATCH: &str = "firmware.watch";
+pub const TYPE_FIRMWARE_CANCEL: &str = "firmware.cancel";
+pub const TYPE_FIRMWARE_PROGRESS: &str = "firmware.progress";
 pub const TYPE_AUTH: &str = "auth";
 pub const TYPE_ACK: &str = "ack";
+
+/// wireless-programmer driver id for RailBOX RB23xx Soft-AP.
+pub const RB23XX_DRIVER: &str = "rb23xx";
+/// Default F-key that turns RB23xx Soft-AP on (CV 200).
+pub const RB23XX_WIFI_FUNCTION: u8 = 28;
 
 /// `Ack.error` codes — the wire contract shared with the frontend. Keep these
 /// in sync with `web/src/api/errorCodes.ts` (generated from this crate).
@@ -334,6 +430,9 @@ pub const CODE_CANCELLED: &str = "cancelled";
 pub const CODE_BAD_PAYLOAD: &str = "bad_payload";
 pub const CODE_UNKNOWN_COMMAND: &str = "unknown_command";
 pub const CODE_Z21_REQUIRED: &str = "z21_required";
+pub const CODE_WP_UNAVAILABLE: &str = "wireless_programmer_unavailable";
+pub const CODE_INVALID_FUNCTION: &str = "invalid_function";
+pub const CODE_INVALID_FIRMWARE_FILE: &str = "invalid_firmware_file";
 
 #[cfg(test)]
 mod tests {
@@ -373,7 +472,18 @@ mod tests {
         assert_eq!(TYPE_TELEMETRY_SUBSCRIBE, "telemetry.subscribe");
         assert_eq!(TYPE_TELEMETRY_CANCEL, "telemetry.cancel");
         assert_eq!(TYPE_TELEMETRY_UPDATE, "telemetry.update");
+        assert_eq!(TYPE_FUNCTION_SET, "function.set");
+        assert_eq!(TYPE_FIRMWARE_STATUS, "firmware.status");
+        assert_eq!(TYPE_FIRMWARE_LIST, "firmware.list");
+        assert_eq!(TYPE_FIRMWARE_SCAN, "firmware.scan");
+        assert_eq!(TYPE_FIRMWARE_UPDATE, "firmware.update");
+        assert_eq!(TYPE_FIRMWARE_WATCH, "firmware.watch");
+        assert_eq!(TYPE_FIRMWARE_CANCEL, "firmware.cancel");
+        assert_eq!(TYPE_FIRMWARE_PROGRESS, "firmware.progress");
         assert_eq!(CODE_Z21_REQUIRED, "z21_required");
+        assert_eq!(CODE_WP_UNAVAILABLE, "wireless_programmer_unavailable");
+        assert_eq!(RB23XX_DRIVER, "rb23xx");
+        assert_eq!(RB23XX_WIFI_FUNCTION, 28);
     }
 
     #[test]

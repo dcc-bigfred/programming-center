@@ -162,6 +162,32 @@ impl Hub {
             ProgrammingMode::Bigfred => Err(ApiError::bad_request("z21_required")),
         }
     }
+
+    /// Ops-track locomotive function. Not part of [`ProgrammingBus`] (CV-only).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn set_function(
+        &self,
+        mode: ProgrammingMode,
+        token: Option<&str>,
+        station_id: Option<u64>,
+        address: u16,
+        function: u8,
+        on: bool,
+        cancel: &CancellationToken,
+    ) -> Result<(), ApiError> {
+        match mode {
+            ProgrammingMode::Z21 => {
+                self.z21
+                    .set_function(address, function, on, Some(cancel))
+                    .await
+            }
+            ProgrammingMode::Bigfred => {
+                self.dcc
+                    .set_function(token, station_id, address, function, on, Some(cancel))
+                    .await
+            }
+        }
+    }
 }
 
 #[cfg(test)]

@@ -22,6 +22,16 @@ export const RAILCOM_ADDRS_MAX = 8;
 export const TYPE_TELEMETRY_SUBSCRIBE = "telemetry.subscribe";
 export const TYPE_TELEMETRY_CANCEL = "telemetry.cancel";
 export const TYPE_TELEMETRY_UPDATE = "telemetry.update";
+export const TYPE_FUNCTION_SET = "function.set";
+export const TYPE_FIRMWARE_STATUS = "firmware.status";
+export const TYPE_FIRMWARE_LIST = "firmware.list";
+export const TYPE_FIRMWARE_SCAN = "firmware.scan";
+export const TYPE_FIRMWARE_UPDATE = "firmware.update";
+export const TYPE_FIRMWARE_WATCH = "firmware.watch";
+export const TYPE_FIRMWARE_CANCEL = "firmware.cancel";
+export const TYPE_FIRMWARE_PROGRESS = "firmware.progress";
+
+export const RB23XX_WIFI_FUNCTION = 28;
 
 /** `Ack.error` codes — keep in sync with `pc-proto::CODE_*`. */
 export const ERROR_CODES = {
@@ -34,6 +44,9 @@ export const ERROR_CODES = {
   BAD_PAYLOAD: "bad_payload",
   UNKNOWN_COMMAND: "unknown_command",
   Z21_REQUIRED: "z21_required",
+  WP_UNAVAILABLE: "wireless_programmer_unavailable",
+  INVALID_FUNCTION: "invalid_function",
+  INVALID_FIRMWARE_FILE: "invalid_firmware_file",
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];

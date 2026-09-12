@@ -40,7 +40,8 @@ export type FeatureId =
   | "volume"
   | "mapping"
   | "coupler"
-  | "backup";
+  | "backup"
+  | "firmware";
 
 /** CV numbers or inclusive [from, to] ranges in one write-priority tier. */
 export type CvWriteTier = (number | [number, number])[];

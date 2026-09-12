@@ -18,6 +18,7 @@ Decoder programming made easy and for everyone.
 - Set the DCC address (short CV 1, or long CV 17/18 and CV 29 bit 5)
 - Set master volume 0–100 (mapped to CV 266 / 63 / 203 by decoder)
 - Map function keys to lamp outputs (ZIMO MS/MN, ESU LokSound v4 / v5)
+- Update RailBOX RB23xx firmware over Soft-AP (F28 + wireless-programmer)
 
 ## Run
 
@@ -54,7 +55,11 @@ to `http` / CORS need a process restart.
   "corsEnabled": false,
   "corsOrigins": [],
   "idleTimeoutSecs": 86400,
-  "pomWriteRepeat": true
+  "pomWriteRepeat": true,
+  "wirelessProgrammer": {
+    "enabled": true,
+    "socketConnectRetryInterval": 60
+  }
 }
 ```
 
@@ -68,6 +73,9 @@ to `http` / CORS need a process restart.
 - `pomWriteRepeat: true` (default) — send each POM write twice. POM carries
   no acknowledgement, so a dropped packet is otherwise silent. Set `false`
   for exactly one packet per write.
+- `wirelessProgrammer.enabled` (default true) — retry IPC `hello` to
+  wireless-programmer every `socketConnectRetryInterval` seconds (default 60).
+  Connect timeout is 2 s (not in JSON).
 
 `bigfred.address` is `host:port` without a scheme. The daemon adds `http://`
 and `ws://`.
@@ -79,6 +87,7 @@ Speed control: [ZIMO MS/MN](docs/speed/zimo.md),
 Output mapping: [ZIMO MS/MN](docs/mapping/zimo.md),
 [ESU LokSound v4 / v5](docs/mapping/esu.md).
 Digital coupler: [ESU and ZIMO](docs/coupler.md).
+RailBOX firmware: [RB23xx Soft-AP](docs/firmware.md).
 
 [ARCHITECTURE.md](ARCHITECTURE.md). Rust / TypeScript rules:
 [CODING-GUIDELINES.md](CODING-GUIDELINES.md). License: Apache-2.0.

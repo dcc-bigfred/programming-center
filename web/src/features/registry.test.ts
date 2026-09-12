@@ -48,5 +48,14 @@ describe("feature modules", () => {
     expect(
       isFeatureEnabled(listFeatures().find((f) => f.id === "coupler")!, getDecoder("rb23xx")),
     ).toBe(false);
+    expect(
+      isFeatureEnabled(listFeatures().find((f) => f.id === "firmware")!, getDecoder("rb23xx")),
+    ).toBe(true);
+    expect(
+      isFeatureEnabled(listFeatures().find((f) => f.id === "firmware")!, getDecoder("nmra")),
+    ).toBe(false);
+    expect(
+      isFeatureEnabled(listFeatures().find((f) => f.id === "firmware")!, getDecoder("zimo-ms450")),
+    ).toBe(false);
   });
 });

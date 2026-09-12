@@ -1,5 +1,14 @@
 import { ApiError } from "./client";
-import type { Ack, CvEntry, TelemetryUpdate, Track } from "./types";
+import type {
+  Ack,
+  CvEntry,
+  FirmwareCandidate,
+  FirmwareFile,
+  FirmwareProgress,
+  FirmwareStatus,
+  TelemetryUpdate,
+  Track,
+} from "./types";
 import { flushCvTable, rememberRead } from "../cv/table";
 import {
   applyProgressFrame,
@@ -21,6 +30,14 @@ const TYPE_ADDRESS_SET = "address.set";
 const TYPE_TELEMETRY_SUBSCRIBE = "telemetry.subscribe";
 const TYPE_TELEMETRY_CANCEL = "telemetry.cancel";
 const TYPE_TELEMETRY_UPDATE = "telemetry.update";
+const TYPE_FUNCTION_SET = "function.set";
+const TYPE_FIRMWARE_STATUS = "firmware.status";
+const TYPE_FIRMWARE_LIST = "firmware.list";
+const TYPE_FIRMWARE_SCAN = "firmware.scan";
+const TYPE_FIRMWARE_UPDATE = "firmware.update";
+const TYPE_FIRMWARE_WATCH = "firmware.watch";
+const TYPE_FIRMWARE_CANCEL = "firmware.cancel";
+const TYPE_FIRMWARE_PROGRESS = "firmware.progress";
 
 const REQUEST_IDLE_MS = 30_000;
 
@@ -30,7 +47,7 @@ interface Envelope {
   payload?: unknown;
 }
 
-type PendingKind = "read" | "write" | "telemetry";
+type PendingKind = "read" | "write" | "telemetry" | "firmware";
 
 type OverlayMode = "read" | "write";
 
@@ -47,6 +64,7 @@ type Pending = {
   touch: () => void;
   idleTimer: number | null;
   onTelemetry?: (update: TelemetryUpdate) => void;
+  onFirmware?: (update: FirmwareProgress) => void;
 };
 
 function wsUrl(): string {
@@ -306,6 +324,74 @@ export class ProgrammingClient {
     );
   }
 
+  async functionSet(
+    input: { stationId?: number; address: number; function: number; on: boolean },
+    signal?: AbortSignal,
+  ): Promise<void> {
+    await this.request(
+      TYPE_FUNCTION_SET,
+      {
+        stationId: input.stationId,
+        address: input.address,
+        function: input.function,
+        on: input.on,
+      },
+      "write",
+      signal,
+    );
+  }
+
+  async firmwareStatus(signal?: AbortSignal): Promise<FirmwareStatus> {
+    const ack = await this.request(TYPE_FIRMWARE_STATUS, {}, "firmware", signal);
+    return {
+      enabled: Boolean(ack.result?.enabled),
+      connected: Boolean(ack.result?.connected),
+    };
+  }
+
+  async firmwareList(signal?: AbortSignal): Promise<FirmwareFile[]> {
+    const ack = await this.request(TYPE_FIRMWARE_LIST, {}, "firmware", signal);
+    return ack.result?.files ?? [];
+  }
+
+  async firmwareScan(signal?: AbortSignal): Promise<FirmwareCandidate[]> {
+    const ack = await this.request(TYPE_FIRMWARE_SCAN, {}, "firmware", signal);
+    return ack.result?.candidates ?? [];
+  }
+
+  async firmwareUpdate(
+    input: { key: string; file: string },
+    signal?: AbortSignal,
+  ): Promise<string> {
+    const ack = await this.request(
+      TYPE_FIRMWARE_UPDATE,
+      { key: input.key, file: input.file },
+      "firmware",
+      signal,
+    );
+    const jobId = ack.result?.jobId;
+    if (!jobId) {
+      throw new ApiError(0, "generic", "missing jobId");
+    }
+    return jobId;
+  }
+
+  async firmwareWatch(
+    jobId: string,
+    onProgress: (update: FirmwareProgress) => void,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    await this.request(
+      TYPE_FIRMWARE_WATCH,
+      { jobId },
+      "firmware",
+      signal,
+      undefined,
+      undefined,
+      onProgress,
+    );
+  }
+
   private async runRead(
     outer: AbortSignal | undefined,
     fn: (signal: AbortSignal) => Promise<Ack>,
@@ -380,7 +466,9 @@ export class ProgrammingClient {
           ? TYPE_CV_WRITE_CANCEL
           : kind === "telemetry"
             ? TYPE_TELEMETRY_CANCEL
-            : TYPE_CV_READ_CANCEL;
+            : kind === "firmware"
+              ? TYPE_FIRMWARE_CANCEL
+              : TYPE_CV_READ_CANCEL;
       try {
         this.socket.send(JSON.stringify({ type, id }));
       } catch {
@@ -397,6 +485,7 @@ export class ProgrammingClient {
     signal?: AbortSignal,
     read?: { liveApply: boolean; cvs: number[] },
     onTelemetry?: (update: TelemetryUpdate) => void,
+    onFirmware?: (update: FirmwareProgress) => void,
   ): Promise<Ack> {
     if (signal?.aborted) throw cancelled();
     this.connect(this.wantedToken ?? null);
@@ -412,8 +501,9 @@ export class ProgrammingClient {
         kind,
         idleTimer: null,
         onTelemetry,
+        onFirmware,
         touch: () => {
-          if (kind === "telemetry") return;
+          if (kind === "telemetry" || kind === "firmware") return;
           if (pending.idleTimer !== null) window.clearTimeout(pending.idleTimer);
           pending.idleTimer = window.setTimeout(() => {
             this.pending.delete(id);
@@ -521,6 +611,10 @@ export class ProgrammingClient {
     }
     if (env.type === TYPE_TELEMETRY_UPDATE && env.id) {
       this.pending.get(env.id)?.onTelemetry?.(env.payload as TelemetryUpdate);
+      return;
+    }
+    if (env.type === TYPE_FIRMWARE_PROGRESS && env.id) {
+      this.pending.get(env.id)?.onFirmware?.(env.payload as FirmwareProgress);
       return;
     }
     if (env.type !== TYPE_ACK || !env.id) {

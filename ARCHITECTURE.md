@@ -46,6 +46,8 @@ org-wide Rust standard).
    300 ms debounce). Invalid JSON keeps the previous snapshot. Changes
    to `http` / CORS need a process restart. `mode`, `programmingMode`,
    and `z21.*` take effect on the next WebSocket command (`Hub::adapter`).
+   `wirelessProgrammer.enabled` / `socketConnectRetryInterval` apply on the
+   next IPC hello retry without a restart.
 6. **`enabled: false` until an operator turns it on.** Fresh images do
    not expose the kiosk.
 7. **JWT is a layout session, not RBAC here.** Permissions stay in
@@ -61,7 +63,7 @@ org-wide Rust standard).
     (CODING-GUIDELINES §2), not firmware-heapless.
 11. **One programming session.** The browser holds one WebSocket to
     programming-center (`cv.read` / `cv.write` / `cv.bitop` / `address.set` /
-    `telemetry.subscribe`).
+    `telemetry.subscribe` / `function.set` / `firmware.*`).
 
 ---
 
@@ -152,6 +154,7 @@ programming-center/
 ├── docs/speed/                # ZIMO / ESU speed-curve notes (English)
 ├── docs/mapping/              # ZIMO / ESU output-mapping notes (English)
 ├── docs/coupler.md            # ESU / ZIMO digital coupler
+├── docs/firmware.md           # RailBOX RB23xx Soft-AP firmware upload
 ├── ARCHITECTURE.md            # this file
 ├── CODING-GUIDELINES.md
 ├── LICENSE                    # Apache-2.0
@@ -163,7 +166,8 @@ programming-center/
 
 Dependencies: `bigfred-shared-daemon` (config + datadir, no Unix IPC),
 `bigfred-client` (path to the sibling `dcc-bigfred/bigfred` tree),
-`dcc-bigfred-proto-z21` (path to sibling `proto`, CI pins `go/v0.1.1`), Diesel 2 + bundled SQLite.
+`dcc-bigfred-proto-z21` (path to sibling `proto`, CI pins `go/v0.1.1`),
+`wp-client` (git `wireless-programmer`, Unix-socket IPC), Diesel 2 + bundled SQLite.
 
 Memory profile of the daemon: **allocation-conscious**.
 
@@ -184,7 +188,8 @@ mode). That file is BigFred’s, not ours.
 `GET /api/v1/pc/config` returns `PublicConfig` (no secrets): `enabled`,
 `mode`, `programmingMode`, `ssoClientId`, `redirectUris`, `idleTimeoutSecs`,
 `stationPicker`, `loginRequired`, `bigfredPublicUrl` (SSO bigfred only),
-`z21` (`programmingMode` z21 only). The SPA polls about every 15 s and hides SSO
+`z21` (`programmingMode` z21 only), `wirelessProgrammer` (`enabled` from
+JSON, `connected` from the IPC supervisor). The SPA polls about every 15 s and hides SSO
 as soon as `mode` becomes `standalone`.
 
 Default seed: `enabled: false`, `mode: bigfred`,
@@ -256,6 +261,7 @@ Unit tests: Vitest + Testing Library (`cd web && npm test`; `make test-web`).
 | `/volume` | same without `cv` | Volume 0–100 stages the mapped master CV (`volumeMap` + `cv.read`) |
 | `/mapping` | same without `cv` | Output mapping. ZIMO MS/MN (`zimoMapping` + main `CvRegistry`). ESU LokSound v4/v5 (`esuMapping` + side table keyed `16.{cv32}.{cv}`, registered while `/mapping` or `/coupler` is mounted). Zmiany Apply writes main diffs first, then one `cv.write` per dirty page (`CV31`, `CV32`, payload). Mapping groups / output-config tab read on demand — no full 1440-CV dump on entry. Leaving `/mapping` or `/coupler` with unsaved indexed diffs confirms and discards the side table only, except when switching mapping ↔ coupler. |
 | `/coupler` | same without `cv` | Digital coupler. ESU: output Mode Select + brightness on CV 32 = 0 (same `esu-indexed` side table), automatic uncoupling CV 246–248 on the main table, and F-key via mapping rows. ZIMO: FO effect 48 + packed CV 115/116 on the main table. |
+| `/firmware` | `station`, `decoder`, `address` | RailBOX RB23xx only. Four-step Soft-AP upload: F28 on (`function.set`), `firmware.scan`, pick `$DATA_DIR/var/railbox/rb23xx/firmware/*.bin` + `firmware.update`/`watch`, F28 off. Alert and blocked scan/upload when wireless-programmer IPC is down. Notes in `docs/firmware.md`. |
 | `/backup` | `station`, `address`, `track` (no decoder required) | Dump / restore CVs; does not use CvRegistry |
 | `/telemetry` | `station`, `address` (no decoder required) | Live RailCom snapshot for the session locomotive. Z21 `programmingMode` only; LAN `0x88` fills address / speed / QoS. The page also shows other Table 13 cards (load, temperature, voltage, Info1, …) for a future non-Z21 source; those stay empty on Z21. Tanks are not shown. |
 
@@ -338,7 +344,7 @@ Command stations: `GET /api/v1/layouts/{id}/command-stations`, filter
 Query `?token=` is still accepted (deprecated). Token is required only in
 `bigfred`. HTTP traces log method + path only (no query).
 
-Envelope `{ type, id, payload }`. Ack `{ ok, error, detail, cvs, errors }`.
+Envelope `{ type, id, payload }`. Ack `{ ok, error, detail, cvs, errors, result? }`.
 
 | type | Role |
 |---|---|
@@ -352,6 +358,13 @@ Envelope `{ type, id, payload }`. Ack `{ ok, error, detail, cvs, errors }`.
 | `telemetry.subscribe` | Z21 only. Long-lived RailCom watch for `address`. Streams `telemetry.update` with Z21 fields `{ address, speedKmh?, qosPercent? }` until `telemetry.cancel` (same `id`) or the socket closes. Wire schema also has Table 13 keys (`load`, `tanks`, …) for a future source; Z21 omits them. `address` `0` → `invalid_address`; dcc-bus → `z21_required`. |
 | `telemetry.update` | Same `id` as the subscribe. One snapshot after each matching `LAN_RAILCOM_DATACHANGED` (address / speed / QoS). |
 | `telemetry.cancel` | Stop the in-flight subscribe (`id` of that `telemetry.subscribe`). |
+| `function.set` | Ops-track locomotive function `{ stationId?, address, function, on }`. Not a pulse. `address` `0` → `invalid_address`. Z21: `Command::SetFunction`. dcc-bus: `loco.setFunction`. Used for RB23xx F28 (Soft-AP). |
+| `firmware.status` | `{ enabled, connected }` for wireless-programmer IPC (also on `GET /api/v1/pc/config`). |
+| `firmware.list` | `*.bin` names in `$DATA_DIR/var/railbox/rb23xx/firmware`. |
+| `firmware.scan` | WP `scan` mode `ap`, `driver === "rb23xx"` only. IPC down → `wireless_programmer_unavailable`. |
+| `firmware.update` | `{ key, file }` — sandbox the basename, then WP `updateFirmware`. Returns `{ jobId }`. |
+| `firmware.watch` | Proxy WP `job.watch`. Streams `firmware.progress` `{ jobId, state, step?, progress?, detail? }` until terminal. Cancel with `firmware.cancel` (same `id`). |
+| `firmware.cancel` | Abort in-flight `firmware.watch` (same `id`) and/or WP `job.cancel` `{ jobId }`. |
 | `auth` | First frame: `{ token }`. Never put the token in the URL. |
 
 Dump/restore of many CVs: the daemon probes CV 1 first, then chunks
@@ -409,6 +422,10 @@ and ESU LokSound v4/v5 (`EsuMappingPage` + `esuMapping.ts`, notes in
 Digital coupler: `/coupler` → `CouplerPage`. ESU v4/v5 share
 `EsuCouplerPage` (`esuCoupler.ts`) and the mapping side table. ZIMO
 MS450 is `ZimoCouplerPage` + `zimoCoupler.ts`. Notes in `docs/coupler.md`.
+
+RB23xx firmware: `/firmware` → `FirmwarePage`. F28 via `Hub::set_function`
+(not `ProgrammingBus`). Scan/upload via `wp-client`
+(`crates/programming-center/src/wp.rs`). Notes in `docs/firmware.md`.
 
 ---
 

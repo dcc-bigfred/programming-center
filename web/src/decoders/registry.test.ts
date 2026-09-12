@@ -33,5 +33,8 @@ describe("decoder catalogue", () => {
     expect(getDecoder("nmra")?.features).not.toContain("coupler");
     expect(getDecoder("loksound-v5")?.longAddressBit ?? 5).toBe(5);
     expect(getDecoder("rb23xx")?.longAddressBit).toBe(3);
+    expect(getDecoder("rb23xx")?.features).toContain("firmware");
+    expect(getDecoder("nmra")?.features).not.toContain("firmware");
+    expect(getDecoder("zimo-ms450")?.features).not.toContain("firmware");
   });
 });

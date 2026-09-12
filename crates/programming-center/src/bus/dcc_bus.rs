@@ -22,6 +22,36 @@ impl DccBusProgrammer {
     pub fn new(client: Arc<bigfred_client::DccBusClient>) -> Self {
         Self { client }
     }
+
+    /// Ops-track function via dcc-bus (`loco.setFunction`). Not a pulse.
+    pub async fn set_function(
+        &self,
+        token: Option<&str>,
+        station_id: Option<u64>,
+        address: u16,
+        function: u8,
+        on: bool,
+        cancel: Option<&CancellationToken>,
+    ) -> Result<(), ApiError> {
+        if cancel.is_some_and(CancellationToken::is_cancelled) {
+            return Err(ApiError::cancelled());
+        }
+        let token = require_token(token)?;
+        let station = require_station(station_id)?;
+        self.client
+            .request_to(
+                token,
+                station,
+                "loco.setFunction",
+                json!({
+                    "address": address,
+                    "function": function,
+                    "on": on,
+                }),
+            )
+            .await?;
+        Ok(())
+    }
 }
 
 fn require_token(token: Option<&str>) -> Result<&str, ApiError> {

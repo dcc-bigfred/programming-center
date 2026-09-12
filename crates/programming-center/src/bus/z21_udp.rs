@@ -155,6 +155,34 @@ impl Z21Client {
         Ok(())
     }
 
+    /// LAN function on the ops track. Fire-and-forget (no decoder ack).
+    pub async fn set_function(
+        &self,
+        addr: u16,
+        func: u8,
+        on: bool,
+        cancel: Option<&CancellationToken>,
+    ) -> Result<(), CvError> {
+        const GAP: Duration = Duration::from_millis(50);
+        let _g = self.slot.lock().await;
+        let pkt = self.encode(&z21::Command::SetFunction { addr, func, on })?;
+        for attempt in 0..2u8 {
+            if cancel.is_some_and(CancellationToken::is_cancelled) {
+                return Err(CvError::Cancelled);
+            }
+            tracing::debug!(
+                peer = %self.peer, addr, func, on, len = pkt.len(), attempt,
+                pkt = %hex_preview(pkt.as_slice()),
+                "z21 set function tx"
+            );
+            self.sock.send(pkt.as_slice()).await?;
+            if attempt == 0 {
+                tokio::time::sleep(GAP).await;
+            }
+        }
+        Ok(())
+    }
+
     /// Listen until `LAN_X_BC_TRACK_POWER_ON` (`61 01`) or `until`, collecting RailCom.
     pub async fn observe(
         &self,
@@ -455,6 +483,7 @@ fn cmd_label(cmd: &z21::Command) -> &'static str {
         z21::Command::CvWrite { .. } => "cv_write",
         z21::Command::PomRead { .. } => "pom_read",
         z21::Command::PomWrite { .. } => "pom_write",
+        z21::Command::SetFunction { .. } => "set_function",
         _ => "other",
     }
 }

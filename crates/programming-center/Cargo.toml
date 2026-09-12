@@ -19,6 +19,7 @@ workspace = true
 pc-core = { path = "../pc-core" }
 pc-proto = { path = "../pc-proto" }
 bigfred-shared-daemon = { git = "https://github.com/dcc-bigfred/rust-commons.git", branch = "main", default-features = false, features = ["config"] }
+wp-client = { git = "https://github.com/dcc-bigfred/wireless-programmer.git", branch = "main" }
 bigfred-client = { path = "../../../bigfred/rust/crates/bigfred-client" }
 dcc-bigfred-proto-z21.workspace = true
 heapless.workspace = true

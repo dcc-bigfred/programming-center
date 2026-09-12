@@ -93,6 +93,24 @@ impl Default for Z21Section {
     }
 }
 
+/// IPC to the wireless-programmer daemon (RB23xx Soft-AP firmware).
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
+pub struct WirelessProgrammerSection {
+    pub enabled: bool,
+    /// Seconds between IPC `hello` attempts when the socket is down.
+    pub socket_connect_retry_interval: u64,
+}
+
+impl Default for WirelessProgrammerSection {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            socket_connect_retry_interval: 60,
+        }
+    }
+}
+
 impl Z21Section {
     #[must_use]
     pub fn is_configured(&self) -> bool {
@@ -132,6 +150,7 @@ pub struct Config {
     /// Send each POM write twice. POM has no acknowledgement, so a lost
     /// packet is otherwise silent. Turn off to send exactly one packet.
     pub pom_write_repeat: bool,
+    pub wireless_programmer: WirelessProgrammerSection,
 }
 
 impl Default for Config {
@@ -152,6 +171,7 @@ impl Default for Config {
             idle_timeout_secs: 86_400,
             dev_redirect_uris: false,
             pom_write_repeat: true,
+            wireless_programmer: WirelessProgrammerSection::default(),
         }
     }
 }
@@ -303,6 +323,10 @@ impl Config {
             } else {
                 None
             },
+            wireless_programmer: WirelessProgrammerPublic {
+                enabled: self.wireless_programmer.enabled,
+                connected: false,
+            },
         }
     }
 
@@ -361,6 +385,14 @@ pub struct PublicConfig {
     pub bigfred_public_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub z21: Option<Z21Public>,
+    pub wireless_programmer: WirelessProgrammerPublic,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WirelessProgrammerPublic {
+    pub enabled: bool,
+    pub connected: bool,
 }
 
 #[must_use]
@@ -386,6 +418,8 @@ mod tests {
         assert_eq!(cfg.z21.hostname, "192.168.4.1");
         assert_eq!(cfg.z21.port, 21150);
         assert!(!cfg.enabled);
+        assert!(cfg.wireless_programmer.enabled);
+        assert_eq!(cfg.wireless_programmer.socket_connect_retry_interval, 60);
         assert!(cfg.redirect_uri_allowed("http://bigfred.local:8092/auth/callback"));
         assert_eq!(cfg.bigfred_api_base(), "http://bigfred.local:8080");
         assert_eq!(cfg.bigfred_ws_base(), "ws://bigfred.local:8080");
@@ -419,6 +453,17 @@ mod tests {
         assert_eq!(cfg.programming_mode, ProgrammingMode::Bigfred);
         assert_eq!(cfg.cv_bus(), ProgrammingMode::Z21);
         assert_eq!(cfg.public().z21.as_ref().map(|z| z.port), Some(21150));
+    }
+
+    #[test]
+    fn wireless_programmer_parses_retry_interval() {
+        let raw = r#"{"wirelessProgrammer":{"enabled":false,"socketConnectRetryInterval":30}}"#;
+        let cfg: Config = serde_json::from_str(raw).unwrap();
+        assert!(!cfg.wireless_programmer.enabled);
+        assert_eq!(cfg.wireless_programmer.socket_connect_retry_interval, 30);
+        let p = cfg.public();
+        assert!(!p.wireless_programmer.enabled);
+        assert!(!p.wireless_programmer.connected);
     }
 
     #[test]

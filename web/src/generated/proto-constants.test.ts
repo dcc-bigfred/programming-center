@@ -13,6 +13,15 @@ import {
   TYPE_TELEMETRY_CANCEL,
   TYPE_TELEMETRY_SUBSCRIBE,
   TYPE_TELEMETRY_UPDATE,
+  TYPE_FUNCTION_SET,
+  TYPE_FIRMWARE_STATUS,
+  TYPE_FIRMWARE_LIST,
+  TYPE_FIRMWARE_SCAN,
+  TYPE_FIRMWARE_UPDATE,
+  TYPE_FIRMWARE_WATCH,
+  TYPE_FIRMWARE_CANCEL,
+  TYPE_FIRMWARE_PROGRESS,
+  RB23XX_WIFI_FUNCTION,
 } from "./proto-constants";
 
 // These assertions pin the wire contract to the Rust proto. If you change a
@@ -43,11 +52,26 @@ describe("proto-constants mirror the Rust crates", () => {
     expect(ERROR_CODES.BAD_PAYLOAD).toBe("bad_payload");
     expect(ERROR_CODES.UNKNOWN_COMMAND).toBe("unknown_command");
     expect(ERROR_CODES.Z21_REQUIRED).toBe("z21_required");
+    expect(ERROR_CODES.WP_UNAVAILABLE).toBe("wireless_programmer_unavailable");
+    expect(ERROR_CODES.INVALID_FUNCTION).toBe("invalid_function");
+    expect(ERROR_CODES.INVALID_FIRMWARE_FILE).toBe("invalid_firmware_file");
   });
 
   it("matches pc-proto telemetry types", () => {
     expect(TYPE_TELEMETRY_SUBSCRIBE).toBe("telemetry.subscribe");
     expect(TYPE_TELEMETRY_CANCEL).toBe("telemetry.cancel");
     expect(TYPE_TELEMETRY_UPDATE).toBe("telemetry.update");
+  });
+
+  it("matches pc-proto firmware types", () => {
+    expect(TYPE_FUNCTION_SET).toBe("function.set");
+    expect(TYPE_FIRMWARE_STATUS).toBe("firmware.status");
+    expect(TYPE_FIRMWARE_LIST).toBe("firmware.list");
+    expect(TYPE_FIRMWARE_SCAN).toBe("firmware.scan");
+    expect(TYPE_FIRMWARE_UPDATE).toBe("firmware.update");
+    expect(TYPE_FIRMWARE_WATCH).toBe("firmware.watch");
+    expect(TYPE_FIRMWARE_CANCEL).toBe("firmware.cancel");
+    expect(TYPE_FIRMWARE_PROGRESS).toBe("firmware.progress");
+    expect(RB23XX_WIFI_FUNCTION).toBe(28);
   });
 });

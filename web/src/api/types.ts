@@ -17,6 +17,10 @@ export interface PublicConfig {
   loginRequired: boolean;
   bigfredPublicUrl?: string;
   z21?: Z21Public;
+  wirelessProgrammer?: {
+    enabled: boolean;
+    connected: boolean;
+  };
 }
 
 export interface TokenResponse {
@@ -95,10 +99,43 @@ export interface TelemetryUpdate {
   info1?: TelemetryInfo1;
 }
 
+export interface FirmwareFile {
+  name: string;
+  size: number;
+  mtime?: number;
+}
+
+export interface FirmwareCandidate {
+  key: string;
+  label: string;
+  rssi?: number;
+  driver: string;
+}
+
+export interface FirmwareProgress {
+  jobId: string;
+  state: string;
+  step?: string;
+  progress?: number;
+  detail?: string;
+}
+
+export interface FirmwareStatus {
+  enabled: boolean;
+  connected: boolean;
+}
+
 export interface Ack {
   ok: boolean;
   error?: string;
   detail?: string;
   cvs?: CvEntry[];
   errors?: number[];
+  result?: {
+    enabled?: boolean;
+    connected?: boolean;
+    files?: FirmwareFile[];
+    candidates?: FirmwareCandidate[];
+    jobId?: string;
+  };
 }

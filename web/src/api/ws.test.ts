@@ -308,4 +308,33 @@ describe("ProgrammingClient progress", () => {
       }),
     ).toBe(true);
   });
+
+  it("streams firmware.progress and cancels on abort", async () => {
+    const ac = new AbortController();
+    const frames: Array<{ jobId: string; state: string }> = [];
+    const done = client.firmwareWatch("job-1", (u) => frames.push(u), ac.signal);
+    await Promise.resolve();
+    await Promise.resolve();
+    const socket = FakeSocket.last!;
+    socket.open();
+    await Promise.resolve();
+    await Promise.resolve();
+    const env = [...socket.sent]
+      .reverse()
+      .map((raw) => JSON.parse(raw as string) as { id: string; type: string; payload?: unknown })
+      .find((e) => e.type === "firmware.watch");
+    expect(env).toBeDefined();
+    expect(env!.payload).toEqual({ jobId: "job-1" });
+    socket.push("firmware.progress", env!.id, { jobId: "job-1", state: "writing", progress: 40 });
+    await Promise.resolve();
+    expect(frames).toEqual([{ jobId: "job-1", state: "writing", progress: 40 }]);
+    ac.abort();
+    await expect(done).rejects.toMatchObject({ code: "cancelled" });
+    expect(
+      socket.sent.some((raw) => {
+        const frame = JSON.parse(raw as string) as { type: string; id: string };
+        return frame.type === "firmware.cancel" && frame.id === env!.id;
+      }),
+    ).toBe(true);
+  });
 });

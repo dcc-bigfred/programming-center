@@ -531,7 +531,7 @@ const rbCore: CvItem[] = [
 
 export const rb23xx: DecoderProfile = {
   id: "rb23xx",
-  features: ["cv", "speed", "address", "volume"],
+  features: ["cv", "speed", "address", "volume", "firmware"],
   longAddressBit: 3,
   cvs: [...rbCore].sort((a, b) => a.cv - b.cv),
 };

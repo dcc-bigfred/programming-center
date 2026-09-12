@@ -14,9 +14,12 @@ use tracing::warn;
 use pc_core::{apply_bitop, expand_cv_list, valid_cv, CvBatch, CvEntry, ExpandError};
 use pc_proto::{
     Ack, AddressSetPayload, CvBitopPayload, CvProgress, CvReadPayload, CvWritePayload, Envelope,
-    TelemetrySubscribePayload, TYPE_ACK, TYPE_ADDRESS_SET, TYPE_AUTH, TYPE_CV_BITOP,
-    TYPE_CV_PROGRESS, TYPE_CV_READ, TYPE_CV_READ_CANCEL, TYPE_CV_WRITE, TYPE_CV_WRITE_CANCEL,
-    TYPE_TELEMETRY_CANCEL, TYPE_TELEMETRY_SUBSCRIBE, TYPE_TELEMETRY_UPDATE,
+    FirmwareJobPayload, FirmwareUpdatePayload, FunctionSetPayload, TelemetrySubscribePayload,
+    TYPE_ACK, TYPE_ADDRESS_SET, TYPE_AUTH, TYPE_CV_BITOP, TYPE_CV_PROGRESS, TYPE_CV_READ,
+    TYPE_CV_READ_CANCEL, TYPE_CV_WRITE, TYPE_CV_WRITE_CANCEL, TYPE_FIRMWARE_CANCEL,
+    TYPE_FIRMWARE_LIST, TYPE_FIRMWARE_PROGRESS, TYPE_FIRMWARE_SCAN, TYPE_FIRMWARE_STATUS,
+    TYPE_FIRMWARE_UPDATE, TYPE_FIRMWARE_WATCH, TYPE_FUNCTION_SET, TYPE_TELEMETRY_CANCEL,
+    TYPE_TELEMETRY_SUBSCRIBE, TYPE_TELEMETRY_UPDATE,
 };
 
 use crate::bus::CvReadReport;
@@ -174,6 +177,7 @@ where
                                 || env.kind == TYPE_CV_READ_CANCEL
                                 || env.kind == TYPE_CV_WRITE_CANCEL
                                 || env.kind == TYPE_TELEMETRY_CANCEL
+                                || env.kind == TYPE_FIRMWARE_CANCEL
                             {
                                 continue;
                             }
@@ -282,7 +286,10 @@ fn is_cancel_for(req_id: &Option<String>, msg: &Message) -> bool {
     let Some((kind, id)) = inbound_envelope(msg) else {
         return false;
     };
-    (kind == TYPE_CV_READ_CANCEL || kind == TYPE_CV_WRITE_CANCEL || kind == TYPE_TELEMETRY_CANCEL)
+    (kind == TYPE_CV_READ_CANCEL
+        || kind == TYPE_CV_WRITE_CANCEL
+        || kind == TYPE_TELEMETRY_CANCEL
+        || kind == TYPE_FIRMWARE_CANCEL)
         && id == *req_id
 }
 
@@ -348,8 +355,67 @@ async fn dispatch(
                 Err(e) => Ack::fail("bad_payload", Some(e.to_string())),
             }
         }
+        TYPE_FUNCTION_SET => match serde_json::from_value::<FunctionSetPayload>(payload) {
+            Ok(p) => {
+                let cfg = state.config().await;
+                crate::firmware::set_function(&cfg, &state.hub, token, p, &cancel).await
+            }
+            Err(e) => Ack::fail("bad_payload", Some(e.to_string())),
+        },
+        TYPE_FIRMWARE_STATUS => {
+            let cfg = state.config().await;
+            crate::firmware::status(&cfg, &state.wp)
+        }
+        TYPE_FIRMWARE_LIST => {
+            let cfg = state.config().await;
+            crate::firmware::list(&cfg, state)
+        }
+        TYPE_FIRMWARE_SCAN => {
+            let cfg = state.config().await;
+            crate::firmware::scan(&cfg, state).await
+        }
+        TYPE_FIRMWARE_UPDATE => match serde_json::from_value::<FirmwareUpdatePayload>(payload) {
+            Ok(p) => {
+                let cfg = state.config().await;
+                crate::firmware::update(&cfg, state, p).await
+            }
+            Err(e) => Ack::fail("bad_payload", Some(e.to_string())),
+        },
+        TYPE_FIRMWARE_WATCH => match serde_json::from_value::<FirmwareJobPayload>(payload) {
+            Ok(p) => firmware_watch(state, env, p, cancel, tx).await,
+            Err(e) => Ack::fail("bad_payload", Some(e.to_string())),
+        },
+        TYPE_FIRMWARE_CANCEL => match serde_json::from_value::<FirmwareJobPayload>(payload) {
+            Ok(p) => {
+                let cfg = state.config().await;
+                crate::firmware::cancel_job(&cfg, state, p).await
+            }
+            Err(e) => Ack::fail("bad_payload", Some(e.to_string())),
+        },
         other => Ack::fail("unknown_command", Some(other.to_string())),
     }
+}
+
+async fn firmware_watch(
+    state: &AppState,
+    env: &Envelope,
+    p: FirmwareJobPayload,
+    cancel: CancellationToken,
+    tx: mpsc::Sender<Message>,
+) -> Ack {
+    let cfg = state.config().await;
+    let (out_tx, mut out_rx) = mpsc::channel(8);
+    let id = env.id.clone();
+    let fwd = tokio::spawn(async move {
+        while let Some(update) = out_rx.recv().await {
+            if !send_envelope(&tx, TYPE_FIRMWARE_PROGRESS, id.clone(), &update).await {
+                break;
+            }
+        }
+    });
+    let ack = crate::firmware::watch(&cfg, state, p, cancel, out_tx).await;
+    fwd.abort();
+    ack
 }
 
 async fn telemetry_subscribe(
@@ -801,6 +867,10 @@ mod tests {
         assert!(is_cancel_for(
             &id,
             &text(r#"{"type":"telemetry.cancel","id":"req-1"}"#),
+        ));
+        assert!(is_cancel_for(
+            &id,
+            &text(r#"{"type":"firmware.cancel","id":"req-1"}"#),
         ));
         assert!(!is_cancel_for(&id, &Message::Ping(Vec::new())));
     }

@@ -13,7 +13,9 @@ use crate::error::{ApiError, ApiResult};
 use crate::AppState;
 
 pub async fn public_config(State(state): State<AppState>) -> Json<PublicConfig> {
-    Json(state.config().await.public())
+    let mut public = state.config().await.public();
+    public.wireless_programmer.connected = state.wp.connected();
+    Json(public)
 }
 
 #[derive(Debug, Deserialize)]

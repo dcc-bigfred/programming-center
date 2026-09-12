@@ -98,6 +98,22 @@ impl Z21Programmer {
             .ok_or_else(|| ApiError::unavailable("z21_unreachable"))
     }
 
+    /// Ops-track function (not a pulse). Soft-AP F28 must stay on.
+    pub async fn set_function(
+        &self,
+        addr: u16,
+        func: u8,
+        on: bool,
+        cancel: Option<&CancellationToken>,
+    ) -> Result<(), ApiError> {
+        let session = self.session(cancel).await?;
+        session
+            .client
+            .set_function(addr, func, on, cancel)
+            .await
+            .map_err(map_unreachable)
+    }
+
     /// Read CVs one-by-one, reporting before and after each slot. Stops between
     /// CVs (and during settle) when `cancel` is cancelled.
     pub async fn read_cvs_reporting(
