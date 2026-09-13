@@ -51,7 +51,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: dcc-bigfred/proto
-          ref: go/v0.1.1
+          ref: go/v0.1.2
           path: proto
 
       - name: Link sibling repos for path dependencies
@@ -115,7 +115,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: dcc-bigfred/proto
-          ref: go/v0.1.1
+          ref: go/v0.1.2
           path: proto
 
       - name: Link sibling repos for path dependencies
