@@ -30,6 +30,8 @@ use crate::error::ApiError;
 
 const VERIFY_WAIT: Duration = Duration::from_secs(5);
 
+type SetErr = Box<Ack>;
+
 /// The slice of `AppState` that `address.set` actually needs. Implementations:
 /// [`Hub`] (production) and canned backends in tests.
 pub trait Backend: Send + Sync {
@@ -122,7 +124,7 @@ pub async fn set(
 
     let (cv28, cv29) = match read_cv28_cv29(backend, token, &p, mode, cancel).await {
         Ok(v) => v,
-        Err(ack) => return ack,
+        Err(ack) => return *ack,
     };
     let writes = match plan_set_writes(p.new_address, cv29, p.long_bit, cv28, p.railcom_plus) {
         Ok(PlanSetWrites::Ok(w)) => w,
@@ -140,17 +142,17 @@ pub async fn set(
     };
 
     if let Err(ack) = settle(cancel).await {
-        return ack;
+        return *ack;
     }
 
     for (i, entry) in writes.iter().copied().enumerate() {
         if i > 0 {
             if let Err(ack) = settle(cancel).await {
-                return ack;
+                return *ack;
             }
         }
         if let Err(ack) = write_one(backend, token, &p, mode, entry, cancel).await {
-            return ack;
+            return *ack;
         }
     }
 
@@ -163,9 +165,9 @@ pub async fn set(
     outcome.into_ack()
 }
 
-async fn settle(cancel: &CancellationToken) -> Result<(), Ack> {
+async fn settle(cancel: &CancellationToken) -> Result<(), SetErr> {
     tokio::select! {
-        () = cancel.cancelled() => Err(Ack::fail(CODE_CANCELLED, None)),
+        () = cancel.cancelled() => Err(Box::new(Ack::fail(CODE_CANCELLED, None))),
         () = tokio::time::sleep(SETTLE) => Ok(()),
     }
 }
@@ -176,7 +178,7 @@ async fn read_cv28_cv29(
     p: &AddressSetPayload,
     mode: ProgrammingMode,
     cancel: &CancellationToken,
-) -> Result<(Option<u8>, u8), Ack> {
+) -> Result<(Option<u8>, u8), SetErr> {
     let want_cv28 = p.railcom_plus.is_some();
     let cvs: &[u16] = if want_cv28 { &[28, 29] } else { &[29] };
     let batch = read_named(backend, token, p, mode, cvs, cancel).await?;
@@ -184,10 +186,10 @@ async fn read_cv28_cv29(
         Some(e) => e.value,
         None => {
             tracing::warn!("CV29 not read, aborting address.set");
-            return Err(Ack::fail(
+            return Err(Box::new(Ack::fail(
                 CODE_PROGRAMMING_FAILED,
                 Some("CV29 not read".into()),
-            ));
+            )));
         }
     };
     let cv28 = batch.iter().find(|e| e.cv == 28).map(|e| e.value);
@@ -313,7 +315,7 @@ async fn read_named(
     mode: ProgrammingMode,
     cvs: &[u16],
     cancel: &CancellationToken,
-) -> Result<Vec<CvEntry>, Ack> {
+) -> Result<Vec<CvEntry>, SetErr> {
     let batch = match backend
         .read_cvs(
             mode,
@@ -327,10 +329,10 @@ async fn read_named(
         .await
     {
         Ok(b) => b,
-        Err(e) => return Err(map_bus(e)),
+        Err(e) => return Err(Box::new(map_bus(e))),
     };
     if cancel.is_cancelled() {
-        return Err(Ack::fail(CODE_CANCELLED, None));
+        return Err(Box::new(Ack::fail(CODE_CANCELLED, None)));
     }
     Ok(batch.cvs)
 }
@@ -342,9 +344,9 @@ async fn write_one(
     mode: ProgrammingMode,
     entry: CvEntry,
     cancel: &CancellationToken,
-) -> Result<CvEntry, Ack> {
+) -> Result<CvEntry, SetErr> {
     if cancel.is_cancelled() {
-        return Err(Ack::fail(CODE_CANCELLED, None));
+        return Err(Box::new(Ack::fail(CODE_CANCELLED, None)));
     }
     match backend
         .write_cvs(
@@ -363,11 +365,11 @@ async fn write_one(
         {
             Ok(entry)
         }
-        Ok(_) => Err(Ack::fail(
+        Ok(_) => Err(Box::new(Ack::fail(
             CODE_PROGRAMMING_FAILED,
             Some(format!("CV{} not written", entry.cv)),
-        )),
-        Err(e) => Err(map_bus(e)),
+        ))),
+        Err(e) => Err(Box::new(map_bus(e))),
     }
 }
 

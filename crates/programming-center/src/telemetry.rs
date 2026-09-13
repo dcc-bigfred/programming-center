@@ -90,8 +90,10 @@ mod tests {
 
     #[tokio::test]
     async fn subscribe_dcc_bus_is_z21_required() {
-        let mut cfg = Config::default();
-        cfg.enabled = true;
+        let cfg = Config {
+            enabled: true,
+            ..Default::default()
+        };
         let (tx, _rx) = mpsc::channel(1);
         let ack = subscribe(
             &cfg,
@@ -109,9 +111,11 @@ mod tests {
 
     #[tokio::test]
     async fn subscribe_rejects_address_zero() {
-        let mut cfg = Config::default();
-        cfg.enabled = true;
-        cfg.mode = IntegrationMode::Standalone;
+        let cfg = Config {
+            enabled: true,
+            mode: IntegrationMode::Standalone,
+            ..Default::default()
+        };
         let (tx, _rx) = mpsc::channel(1);
         let ack = subscribe(
             &cfg,
