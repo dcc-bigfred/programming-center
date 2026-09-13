@@ -21,7 +21,6 @@ const VolumePage = lazy(() => import("./pages/VolumePage"));
 const MappingPage = lazy(() => import("./pages/MappingPage"));
 const CouplerPage = lazy(() => import("./pages/CouplerPage"));
 const FirmwarePage = lazy(() => import("./pages/FirmwarePage"));
-const TelemetryPage = lazy(() => import("./pages/TelemetryPage"));
 
 function RouteFallback() {
   return (
@@ -149,14 +148,6 @@ export const router = createBrowserRouter(
           element: (
             <Protected>
               <BackupPage />
-            </Protected>
-          ),
-        },
-        {
-          path: "/telemetry",
-          element: (
-            <Protected>
-              <TelemetryPage />
             </Protected>
           ),
         },

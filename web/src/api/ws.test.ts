@@ -280,35 +280,6 @@ describe("ProgrammingClient progress", () => {
     expect(FakeSocket.last).toBe(first);
   });
 
-  it("streams telemetry.update and cancels on abort", async () => {
-    const ac = new AbortController();
-    const updates: Array<{ address: number; speedKmh?: number; qosPercent?: number }> = [];
-    const done = client.telemetrySubscribe({ address: 13 }, (u) => updates.push(u), ac.signal);
-    await Promise.resolve();
-    await Promise.resolve();
-    const socket = FakeSocket.last!;
-    socket.open();
-    await Promise.resolve();
-    await Promise.resolve();
-    const env = [...socket.sent]
-      .reverse()
-      .map((raw) => JSON.parse(raw as string) as { id: string; type: string; payload?: unknown })
-      .find((e) => e.type === "telemetry.subscribe");
-    expect(env).toBeDefined();
-    expect(env!.payload).toEqual({ address: 13 });
-    socket.push("telemetry.update", env!.id, { address: 13, speedKmh: 80, qosPercent: 12 });
-    await Promise.resolve();
-    expect(updates).toEqual([{ address: 13, speedKmh: 80, qosPercent: 12 }]);
-    ac.abort();
-    await expect(done).rejects.toMatchObject({ code: "cancelled" });
-    expect(
-      socket.sent.some((raw) => {
-        const frame = JSON.parse(raw as string) as { type: string; id: string };
-        return frame.type === "telemetry.cancel" && frame.id === env!.id;
-      }),
-    ).toBe(true);
-  });
-
   it("streams firmware.progress and cancels on abort", async () => {
     const ac = new AbortController();
     const frames: Array<{ jobId: string; state: string }> = [];

@@ -10,9 +10,6 @@ import {
   RAILCOM_PLUS_CV,
   RAILCOM_PLUS_MASK,
   SHORT_MAX,
-  TYPE_TELEMETRY_CANCEL,
-  TYPE_TELEMETRY_SUBSCRIBE,
-  TYPE_TELEMETRY_UPDATE,
   TYPE_FUNCTION_SET,
   TYPE_FIRMWARE_STATUS,
   TYPE_FIRMWARE_LIST,
@@ -55,12 +52,6 @@ describe("proto-constants mirror the Rust crates", () => {
     expect(ERROR_CODES.WP_UNAVAILABLE).toBe("wireless_programmer_unavailable");
     expect(ERROR_CODES.INVALID_FUNCTION).toBe("invalid_function");
     expect(ERROR_CODES.INVALID_FIRMWARE_FILE).toBe("invalid_firmware_file");
-  });
-
-  it("matches pc-proto telemetry types", () => {
-    expect(TYPE_TELEMETRY_SUBSCRIBE).toBe("telemetry.subscribe");
-    expect(TYPE_TELEMETRY_CANCEL).toBe("telemetry.cancel");
-    expect(TYPE_TELEMETRY_UPDATE).toBe("telemetry.update");
   });
 
   it("matches pc-proto firmware types", () => {

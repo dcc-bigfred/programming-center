@@ -63,7 +63,7 @@ org-wide Rust standard).
     (CODING-GUIDELINES §2), not firmware-heapless.
 11. **One programming session.** The browser holds one WebSocket to
     programming-center (`cv.read` / `cv.write` / `cv.bitop` / `address.set` /
-    `telemetry.subscribe` / `function.set` / `firmware.*`).
+    `function.set` / `firmware.*`).
 
 ---
 
@@ -263,7 +263,6 @@ Unit tests: Vitest + Testing Library (`cd web && npm test`; `make test-web`).
 | `/coupler` | same without `cv` | Digital coupler. ESU: output Mode Select + brightness on CV 32 = 0 (same `esu-indexed` side table), automatic uncoupling CV 246–248 on the main table, and F-key via mapping rows. ZIMO: FO effect 48 + packed CV 115/116 on the main table. |
 | `/firmware` | `station`, `decoder`, `address` | RailBOX RB23xx only. Four-step Soft-AP upload: F28 on (`function.set`), `firmware.scan`, pick `$DATA_DIR/var/railbox/rb23xx/firmware/*.bin` + `firmware.update`/`watch`, F28 off. Alert and blocked scan/upload when wireless-programmer IPC is down. Notes in `docs/firmware.md`. |
 | `/backup` | `station`, `address`, `track` (no decoder required) | Dump / restore CVs; does not use CvRegistry |
-| `/telemetry` | `station`, `address` (no decoder required) | Live RailCom snapshot for the session locomotive. Z21 `programmingMode` only; LAN `0x88` fills address / speed / QoS. The page also shows other Table 13 cards (load, temperature, voltage, Info1, …) for a future non-Z21 source; those stay empty on Z21. Tanks are not shown. |
 
 The shell is a Paperbase-style layout: dark left navigator, blue header,
 grey content well. Feature entries are `<Link>`s that keep the current
@@ -355,9 +354,6 @@ Envelope `{ type, id, payload }`. Ack `{ ok, error, detail, cvs, errors, result?
 | `cv.write.cancel` | Stop the in-flight write (`id` of that `cv.write`). |
 | `cv.bitop` | RMW: `new = (old & andMask) \| orMask` |
 | `address.set` | ESU service-mode address: optional CV 28 bit 7 (RailComPlus), then CV 1 + clear CV 29 bit 5 (short) or CV 17 → 18 → set bit 5 (long). Always `prog`. After the write, wait until the Z21 leaves programming mode (`61 01` / system state) and re-read CV 1/17/18/29. Mismatch → `address_reverted` with the actual CVs. Payload `{ stationId?, address, newAddress, longBit?, railcomPlus? }`. Cancel with `cv.write.cancel`. |
-| `telemetry.subscribe` | Z21 only. Long-lived RailCom watch for `address`. Streams `telemetry.update` with Z21 fields `{ address, speedKmh?, qosPercent? }` until `telemetry.cancel` (same `id`) or the socket closes. Wire schema also has Table 13 keys (`load`, `tanks`, …) for a future source; Z21 omits them. `address` `0` → `invalid_address`; dcc-bus → `z21_required`. |
-| `telemetry.update` | Same `id` as the subscribe. One snapshot after each matching `LAN_RAILCOM_DATACHANGED` (address / speed / QoS). |
-| `telemetry.cancel` | Stop the in-flight subscribe (`id` of that `telemetry.subscribe`). |
 | `function.set` | Ops-track locomotive function `{ stationId?, address, function, on }`. Not a pulse. `address` `0` → `invalid_address`. Z21: `Command::SetFunction`. dcc-bus: `loco.setFunction`. Used for RB23xx F28 (Soft-AP). |
 | `firmware.status` | `{ enabled, connected }` for wireless-programmer IPC (also on `GET /api/v1/pc/config`). |
 | `firmware.list` | `*.bin` names in `$DATA_DIR/var/railbox/rb23xx/firmware`. |

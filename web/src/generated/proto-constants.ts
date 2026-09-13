@@ -19,9 +19,6 @@ export const RAILCOM_PLUS_BIT = 7;
 export const RAILCOM_PLUS_MASK = 1 << RAILCOM_PLUS_BIT;
 export const RAILCOM_ADDRS_MAX = 8;
 
-export const TYPE_TELEMETRY_SUBSCRIBE = "telemetry.subscribe";
-export const TYPE_TELEMETRY_CANCEL = "telemetry.cancel";
-export const TYPE_TELEMETRY_UPDATE = "telemetry.update";
 export const TYPE_FUNCTION_SET = "function.set";
 export const TYPE_FIRMWARE_STATUS = "firmware.status";
 export const TYPE_FIRMWARE_LIST = "firmware.list";

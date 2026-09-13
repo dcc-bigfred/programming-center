@@ -14,12 +14,11 @@ use tracing::warn;
 use pc_core::{apply_bitop, expand_cv_list, valid_cv, CvBatch, CvEntry, ExpandError};
 use pc_proto::{
     Ack, AddressSetPayload, CvBitopPayload, CvProgress, CvReadPayload, CvWritePayload, Envelope,
-    FirmwareJobPayload, FirmwareUpdatePayload, FunctionSetPayload, TelemetrySubscribePayload,
-    TYPE_ACK, TYPE_ADDRESS_SET, TYPE_AUTH, TYPE_CV_BITOP, TYPE_CV_PROGRESS, TYPE_CV_READ,
-    TYPE_CV_READ_CANCEL, TYPE_CV_WRITE, TYPE_CV_WRITE_CANCEL, TYPE_FIRMWARE_CANCEL,
-    TYPE_FIRMWARE_LIST, TYPE_FIRMWARE_PROGRESS, TYPE_FIRMWARE_SCAN, TYPE_FIRMWARE_STATUS,
-    TYPE_FIRMWARE_UPDATE, TYPE_FIRMWARE_WATCH, TYPE_FUNCTION_SET, TYPE_TELEMETRY_CANCEL,
-    TYPE_TELEMETRY_SUBSCRIBE, TYPE_TELEMETRY_UPDATE,
+    FirmwareJobPayload, FirmwareUpdatePayload, FunctionSetPayload, TYPE_ACK, TYPE_ADDRESS_SET,
+    TYPE_AUTH, TYPE_CV_BITOP, TYPE_CV_PROGRESS, TYPE_CV_READ, TYPE_CV_READ_CANCEL, TYPE_CV_WRITE,
+    TYPE_CV_WRITE_CANCEL, TYPE_FIRMWARE_CANCEL, TYPE_FIRMWARE_LIST, TYPE_FIRMWARE_PROGRESS,
+    TYPE_FIRMWARE_SCAN, TYPE_FIRMWARE_STATUS, TYPE_FIRMWARE_UPDATE, TYPE_FIRMWARE_WATCH,
+    TYPE_FUNCTION_SET,
 };
 
 use crate::bus::CvReadReport;
@@ -66,34 +65,26 @@ async fn handle_socket(socket: WebSocket, state: AppState, query_token: Option<S
         return;
     };
 
-    let mut queued: Option<Envelope> = None;
     'socket: loop {
-        let env = if let Some(next) = queued.take() {
-            next
-        } else {
-            let Some(Ok(msg)) = stream.next().await else {
-                break;
-            };
-            let text = match inbound_text(msg, &tx).await {
-                Inbound::Skip => continue,
-                Inbound::Closed => break,
-                Inbound::Text(t) => t,
-            };
-            match serde_json::from_str(&text) {
-                Ok(e) => e,
-                Err(err) => {
-                    warn!(error = %err, "bad ws frame");
-                    continue;
-                }
+        let Some(Ok(msg)) = stream.next().await else {
+            break;
+        };
+        let text = match inbound_text(msg, &tx).await {
+            Inbound::Skip => continue,
+            Inbound::Closed => break,
+            Inbound::Text(t) => t,
+        };
+        let env: Envelope = match serde_json::from_str(&text) {
+            Ok(e) => e,
+            Err(err) => {
+                warn!(error = %err, "bad ws frame");
+                continue;
             }
         };
         if env.kind == TYPE_AUTH {
             continue;
         }
-        if env.kind == TYPE_CV_READ_CANCEL
-            || env.kind == TYPE_CV_WRITE_CANCEL
-            || env.kind == TYPE_TELEMETRY_CANCEL
-        {
+        if env.kind == TYPE_CV_READ_CANCEL || env.kind == TYPE_CV_WRITE_CANCEL {
             let _ = send_envelope(&tx, TYPE_ACK, env.id.clone(), &Ack::ok()).await;
             continue;
         }
@@ -107,17 +98,11 @@ async fn handle_socket(socket: WebSocket, state: AppState, query_token: Option<S
             cancel.clone(),
             tx.clone(),
         ));
-        match supervise(&mut op, &mut stream, &tx, &req_id, &env.kind, &cancel).await {
+        match supervise(&mut op, &mut stream, &tx, &req_id, &cancel).await {
             Supervise::Ack(ack) => {
                 if !send_envelope(&tx, TYPE_ACK, env.id.clone(), &ack).await {
                     break 'socket;
                 }
-            }
-            Supervise::FollowUp(ack, next) => {
-                if !send_envelope(&tx, TYPE_ACK, env.id.clone(), &ack).await {
-                    break 'socket;
-                }
-                queued = Some(next);
             }
             Supervise::Closed => break 'socket,
         }
@@ -129,12 +114,6 @@ async fn handle_socket(socket: WebSocket, state: AppState, query_token: Option<S
 enum Supervise {
     Ack(Ack),
     Closed,
-    /// Current op finished; run this next command without waiting for the socket.
-    FollowUp(Ack, Envelope),
-}
-
-fn replaces_in_flight(current_kind: &str, incoming_kind: &str) -> bool {
-    current_kind == TYPE_TELEMETRY_SUBSCRIBE && incoming_kind == TYPE_TELEMETRY_SUBSCRIBE
 }
 
 async fn supervise<F>(
@@ -142,20 +121,15 @@ async fn supervise<F>(
     stream: &mut (impl StreamExt<Item = Result<Message, axum::Error>> + Unpin),
     tx: &mpsc::Sender<Message>,
     req_id: &Option<String>,
-    current_kind: &str,
     cancel: &CancellationToken,
 ) -> Supervise
 where
     F: Future<Output = Ack> + Unpin,
 {
-    let mut follow_up = None;
     loop {
         tokio::select! {
             ack = &mut *op => {
-                return match follow_up {
-                    Some(env) => Supervise::FollowUp(ack, env),
-                    None => Supervise::Ack(ack),
-                };
+                return Supervise::Ack(ack);
             }
             incoming = stream.next() => {
                 match incoming {
@@ -176,14 +150,8 @@ where
                             if env.kind == TYPE_AUTH
                                 || env.kind == TYPE_CV_READ_CANCEL
                                 || env.kind == TYPE_CV_WRITE_CANCEL
-                                || env.kind == TYPE_TELEMETRY_CANCEL
                                 || env.kind == TYPE_FIRMWARE_CANCEL
                             {
-                                continue;
-                            }
-                            if replaces_in_flight(current_kind, &env.kind) {
-                                cancel.cancel();
-                                follow_up = Some(env);
                                 continue;
                             }
                             warn!(kind = %env.kind, "rejecting frame during in-flight programming op");
@@ -286,10 +254,7 @@ fn is_cancel_for(req_id: &Option<String>, msg: &Message) -> bool {
     let Some((kind, id)) = inbound_envelope(msg) else {
         return false;
     };
-    (kind == TYPE_CV_READ_CANCEL
-        || kind == TYPE_CV_WRITE_CANCEL
-        || kind == TYPE_TELEMETRY_CANCEL
-        || kind == TYPE_FIRMWARE_CANCEL)
+    (kind == TYPE_CV_READ_CANCEL || kind == TYPE_CV_WRITE_CANCEL || kind == TYPE_FIRMWARE_CANCEL)
         && id == *req_id
 }
 
@@ -349,12 +314,6 @@ async fn dispatch(
             }
             Err(e) => Ack::fail("bad_payload", Some(e.to_string())),
         },
-        TYPE_TELEMETRY_SUBSCRIBE => {
-            match serde_json::from_value::<TelemetrySubscribePayload>(payload) {
-                Ok(p) => telemetry_subscribe(state, env, p, cancel, tx).await,
-                Err(e) => Ack::fail("bad_payload", Some(e.to_string())),
-            }
-        }
         TYPE_FUNCTION_SET => match serde_json::from_value::<FunctionSetPayload>(payload) {
             Ok(p) => {
                 let cfg = state.config().await;
@@ -414,28 +373,6 @@ async fn firmware_watch(
         }
     });
     let ack = crate::firmware::watch(&cfg, state, p, cancel, out_tx).await;
-    fwd.abort();
-    ack
-}
-
-async fn telemetry_subscribe(
-    state: &AppState,
-    env: &Envelope,
-    p: TelemetrySubscribePayload,
-    cancel: CancellationToken,
-    tx: mpsc::Sender<Message>,
-) -> Ack {
-    let cfg = state.config().await;
-    let (out_tx, mut out_rx) = mpsc::channel(8);
-    let id = env.id.clone();
-    let fwd = tokio::spawn(async move {
-        while let Some(update) = out_rx.recv().await {
-            if !send_envelope(&tx, TYPE_TELEMETRY_UPDATE, id.clone(), &update).await {
-                break;
-            }
-        }
-    });
-    let ack = crate::telemetry::subscribe(&cfg, &state.hub, p, &cancel, out_tx).await;
     fwd.abort();
     ack
 }
@@ -866,23 +803,9 @@ mod tests {
         ));
         assert!(is_cancel_for(
             &id,
-            &text(r#"{"type":"telemetry.cancel","id":"req-1"}"#),
-        ));
-        assert!(is_cancel_for(
-            &id,
             &text(r#"{"type":"firmware.cancel","id":"req-1"}"#),
         ));
         assert!(!is_cancel_for(&id, &Message::Ping(Vec::new())));
-    }
-
-    #[test]
-    fn telemetry_subscribe_replaces_in_flight_telemetry() {
-        assert!(replaces_in_flight(
-            TYPE_TELEMETRY_SUBSCRIBE,
-            TYPE_TELEMETRY_SUBSCRIBE
-        ));
-        assert!(!replaces_in_flight(TYPE_TELEMETRY_SUBSCRIBE, TYPE_CV_READ));
-        assert!(!replaces_in_flight(TYPE_CV_READ, TYPE_TELEMETRY_SUBSCRIBE));
     }
 
     #[test]

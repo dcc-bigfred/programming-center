@@ -12,7 +12,6 @@ mod firmware;
 mod http;
 mod models;
 mod schema;
-mod telemetry;
 mod wp;
 mod ws;
 

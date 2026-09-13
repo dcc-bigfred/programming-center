@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.2] — 2026-09-13
+
+Drop the RailCom telemetry tab and WebSocket watch. Address programming still
+reads CV 28 (RailComPlus) and still records RailCom locomotive addresses seen
+while verifying `address.set`.
+
+### Removed
+
+- **RailCom telemetry** — `/telemetry` page, navigator entry, and
+  `telemetry.subscribe` / `telemetry.update` / `telemetry.cancel` on the
+  programming WebSocket. Z21 LAN `0x88` is no longer watched for live speed /
+  QoS snapshots. Dropped the optional `railcom` feature of
+  `dcc-bigfred-proto-z21`.
+
 ## [v0.1] — 2026-09-13
 
 First public release of **Programming Center** — a kiosk-friendly web UI and
